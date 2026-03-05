@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LivePulse V1 Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 24px; }
+    button { padding: 10px 14px; margin-right: 8px; cursor: pointer; }
+    pre { background: #f4f4f4; padding: 12px; border-radius: 8px; max-height: 260px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>LivePulse Local Test</h1>
+  <p>Open DevTools console. This page sends events and listens to live socket updates.</p>
+  <button id="customBtn">Send Custom Event</button>
+  <button id="flushBtn">Flush Queue</button>
+  <pre id="log"></pre>
+
+  <script src="http://localhost:5000/socket.io/socket.io.js"></script>
+  <script src="./sdk/src/livepulse.js"></script>
+  <script>
+    const PROJECT_ID = "699d9becf25204ae69676baa";
+    const API_KEY = "lp_test_local_key_123";
+    const ENDPOINT = "http://localhost:5000/api/events/ingest";
+
+    const logEl = document.getElementById("log");
+    function log(msg, payload) {
+      const line = payload ? `${msg} ${JSON.stringify(payload)}` : msg;
+      logEl.textContent = `${line}\n${logEl.textContent}`;
+      console.log(msg, payload || "");
+    }
+
+    const socket = io("http://localhost:5000");
+
+    socket.on("connect", () => {
+      log("Socket connected:", { id: socket.id });
+      socket.emit("joinProject", PROJECT_ID);
+    });
+
+    socket.on("new-event", (data) => {
+      log("new-event:", data);
+    });
+
+    socket.on("session-updated", (data) => {
+      log("session-updated:", data);
+    });
+
+    socket.on("disconnect", () => {
+      log("Socket disconnected");
+    });
+
+    window.LivePulse.init({
+      apiKey: API_KEY,
+      endpoint: ENDPOINT,
+      projectId: PROJECT_ID,
+      userId: "anonymous",
+    });
+
+    document.getElementById("customBtn").addEventListener("click", function () {
+      window.LivePulse.track("custom", { source: "customBtn", at: new Date().toISOString() });
+      log("Custom event queued");
+    });
+
+    document.getElementById("flushBtn").addEventListener("click", function () {
+      window.LivePulse.flush();
+      log("Queue flushed");
+    });
+  </script>
+</body>
+</html>

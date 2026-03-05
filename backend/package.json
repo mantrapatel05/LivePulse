@@ -7,7 +7,8 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon server.js"
+    "start": "nodemon server.js",
+    "seed:test-project": "node scripts/seedTestProject.js"
   },
   "dependencies": {
     "cors": "^2.8.6",

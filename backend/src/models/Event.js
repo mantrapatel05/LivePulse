@@ -8,19 +8,40 @@ const EventSchema = new mongoose.Schema({
     },
     sessionId : {
         type : String,
+        required: true,
+        index: true
+    },
+    userId: {
+        type: String,
+        default: 'anonymous',
+        index: true
+    },
+    eventType : {
+        type : String,
+        required: true,
+        enum: ['page_view', 'click', 'error', 'rage_click', 'custom', 'time_on_page', 'scroll_depth']
+    },
+    url: {
+        type: String,
         required: true
     },
-    type : {
-        type : String,
-        required: true
+    element: {
+        type: String,
+        default: null
+    },
+    timestamp: {
+        type: Date,
+        default: Date.now,
+        index: true
     },
     metadata : {
-        type : Object
+        type : mongoose.Schema.Types.Mixed,
+        default: {}
     },
     city : {
         type : String
     },
-    createdAt : {
+    receivedAt : {
         type : Date,
         default : Date.now
     }
@@ -28,7 +49,7 @@ const EventSchema = new mongoose.Schema({
 
 //ttl index(30 days)
 EventSchema.index(
-    { createdAt : 1},
+    { receivedAt : 1},
     {
         expireAfterSeconds : 60 * 60 * 24 *30
     }
