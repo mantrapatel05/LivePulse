@@ -4,6 +4,7 @@ const cors = require('cors');
 const eventRoutes = require('./routes/eventRoutes');
 const sessionRoutes = require('./routes/sessionRoutes');
 const projectRoutes = require('./routes/projectRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
 
 const app = express();
 
@@ -13,6 +14,7 @@ app.use(express.json());
 app.use('/api/events', eventRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/projects', projectRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 app.get('/', (req, res) => {
     res.send('Welcome to the LivePulse API');

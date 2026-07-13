@@ -1,11 +1,9 @@
 const Event = require('../models/Event');
 const Session = require('../models/Session');
 
-
 const ingestEvent = async (req,res) => {
     try {
         const body = req.body || {};
-
         // Accept both snake_case and camelCase payloads for SDK compatibility.
         const sessionId = body.sessionId || body.session_id;
         const userId = body.userId || body.user_id || 'anonymous';

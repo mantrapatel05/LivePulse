@@ -269,7 +269,7 @@
       });
     },
 
-    track: function (eventType, metadata) {
+    track: function (eventType, metadata) { 
       if (!_apiKey) return;
       enqueue(buildEvent(eventType || 'custom', { metadata: metadata || {} }));
     },
