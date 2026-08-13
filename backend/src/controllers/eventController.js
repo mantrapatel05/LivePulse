@@ -1,5 +1,6 @@
 const Event = require('../models/Event');
 const Session = require('../models/Session');
+const { getClientIp, resolveCity } = require('../services/geo');
 
 const ingestEvent = async (req,res) => {
     try {
@@ -12,7 +13,7 @@ const ingestEvent = async (req,res) => {
         const element = body.element || body?.metadata?.element || null;
         const timestamp = body.timestamp || body?.metadata?.timestamp || new Date().toISOString();
         const metadata = body.metadata || {};
-        const city = body.city || null;
+        const city = body.city || resolveCity(getClientIp(req));
         const parsedTimestamp = new Date(timestamp);
 
         if(!sessionId || !eventType || !url){
