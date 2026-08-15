@@ -4,3 +4,24 @@ backend/.env
 
 docs/*.md
 *.md
+
+# Dependencies and build output
+**/node_modules/
+**/dist/
+**/.output/
+coverage/
+
+# Local environment and logs
+**/.env
+**/.env.local
+*.log
+npm-debug.log*
+
+# Editor and operating-system files
+.DS_Store
+.idea/
+.vscode/
+desktop.ini
+
+# Local deployment tooling
+.wrangler/
