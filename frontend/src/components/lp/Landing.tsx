@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { useAuth } from "../../lib/auth";
 import { API_URL } from "../../lib/config";
+import { BrandMark } from "./Brand";
 
 /**
  * The hero monitor, world map and chat replay are clearly-labelled preview
@@ -274,21 +275,14 @@ export function Landing() {
       <div className="grain" />
 
       <header className="nav">
-        <a className="brand" href="#top">
+        <a className="brand" href="#top" aria-label="LivePulse home">
           <span className="brand-mark">
-            <svg viewBox="0 0 60 24" width="48" height="20" aria-hidden="true">
-              <polyline
-                className="ecg-mini"
-                points="0,12 12,12 16,4 22,20 28,8 32,12 60,12"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="square"
-                strokeLinejoin="miter"
-              />
-            </svg>
+            <BrandMark size={26} />
           </span>
-          <span className="brand-name">LivePulse</span>
+          <span className="brand-name">
+            <span className="wm-live">Live</span>
+            <span className="wm-pulse">Pulse</span>
+          </span>
           <span className="brand-status">
             <i className="dot" /> online · <span id="navOnline">217</span>
           </span>
@@ -700,7 +694,14 @@ export function Landing() {
       </section>
 
       <footer className="foot">
-        <span>LivePulse · v0.1 · 2026</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <BrandMark size={16} />
+          <span className="wordmark" style={{ fontSize: 13 }}>
+            <span className="wm-live">Live</span>
+            <span className="wm-pulse">Pulse</span>
+          </span>
+          <span>· v0.1 · 2026</span>
+        </span>
         <span>
           made by <span className="under">@mantrapatel05</span>
         </span>

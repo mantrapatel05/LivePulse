@@ -35,8 +35,8 @@ function AuthCallback() {
       <div className="lp-grain" />
       <div className="lp-center">
         <div className="lp-card" aria-busy={!timedOut}>
-          <div style={{ marginBottom: 12 }}>
-            <Brand />
+          <div style={{ marginBottom: 16 }}>
+            <Brand animated={!timedOut} size={32} />
           </div>
           {!timedOut ? (
             <>

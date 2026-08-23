@@ -1,11 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Link, Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 import { AuthProvider } from "../lib/auth";
+import { Brand } from "../components/lp/Brand";
 
 function NotFoundComponent() {
   return (
     <div className="lp-app lp-center">
       <div className="lp-card">
+        <div style={{ marginBottom: 16 }}>
+          <Brand />
+        </div>
         <span className="lp-num">404 / lost signal</span>
         <h2>
           That page is not on this <em>frequency</em>.
@@ -22,6 +26,9 @@ function ErrorComponent({ reset }: { error: Error; reset: () => void }) {
   return (
     <div className="lp-app lp-center">
       <div className="lp-card">
+        <div style={{ marginBottom: 16 }}>
+          <Brand />
+        </div>
         <span className="lp-num">signal interrupted</span>
         <h2>
           This page could not <em>load</em>.
