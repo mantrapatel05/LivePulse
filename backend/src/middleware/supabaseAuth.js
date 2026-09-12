@@ -1,5 +1,15 @@
 const { verifySupabaseToken, AuthError } = require("../lib/verifySupabaseToken");
 
+/**
+ * Requires a valid Supabase session for privileged dashboard endpoints
+ * (project management, analytics, chat history). This is deliberately a
+ * *different* trust boundary from apiKeyAuth: the public ingestion key
+ * (shipped in every customer's page source) must never grant access to
+ * these routes.
+ *
+ * Expects: Authorization: Bearer <supabase access_token>
+ * Sets:    req.user = { id, email, role }
+ */
 async function requireDashboardAuth(req, res, next) {
   try {
     const header = req.header("authorization") || req.header("Authorization");

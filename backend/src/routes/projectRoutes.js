@@ -1,14 +1,20 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 
 const {
-    createProject,
-    listProjects,
-    rotateProjectApiKey
-} = require('../controllers/projectController');
+  createProject,
+  listProjects,
+  rotateProjectApiKey,
+  getEmbedSnippet,
+} = require("../controllers/projectController");
+const { requireDashboardAuth } = require("../middleware/supabaseAuth");
+const { requireProjectOwnership } = require("../middleware/projectOwnership");
 
-router.post('/', createProject);
-router.get('/', listProjects);
-router.post('/:projectId/rotate-key', rotateProjectApiKey);
+router.use(requireDashboardAuth);
+
+router.post("/", createProject);
+router.get("/", listProjects);
+router.post("/:projectId/rotate-key", requireProjectOwnership, rotateProjectApiKey);
+router.get("/:projectId/embed", requireProjectOwnership, getEmbedSnippet);
 
 module.exports = router;

@@ -1,6 +1,14 @@
 const mongoose = require("mongoose");
 const Project = require("../models/Project");
 
+/**
+ * Loads the project referenced by req.params.projectId and verifies it
+ * belongs to req.user (set by requireDashboardAuth, which must run first).
+ * Sets req.project on success.
+ *
+ * A visitor holding a project's public API key cannot pass this check —
+ * there is no path from api key -> req.user, which is the whole point.
+ */
 async function requireProjectOwnership(req, res, next) {
   try {
     const { projectId } = req.params;

@@ -1,26 +1,25 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 
-const apiKeyAuth = require('../middleware/apiKeyAuth');
 const {
-    getOverview,
-    getTopPages,
-    getEventsOverTime,
-    getEventBreakdown,
-    getSessionTimeline,
-    getErrorClusters,
-} = require('../controllers/analyticsController');
+  getOverview,
+  getTopPages,
+  getEventsOverTime,
+  getEventBreakdown,
+  getSessionTimeline,
+  getErrorClusters,
+} = require("../controllers/analyticsController");
+const { requireDashboardAuth } = require("../middleware/supabaseAuth");
+const { requireProjectOwnership } = require("../middleware/projectOwnership");
 
-router.get('/:projectId/overview', apiKeyAuth, getOverview);
+router.use(requireDashboardAuth);
+router.use('/:projectId', requireProjectOwnership);
 
-router.get('/:projectId/events-over-time', getEventsOverTime);
-
-router.get('/:projectId/top-pages',apiKeyAuth,getTopPages);
-
-router.get('/:projectId/event-breakdown',apiKeyAuth,getEventBreakdown);
-
-router.get('/:projectId/sessions/:sessionId/timeline',apiKeyAuth,getSessionTimeline);
-
-router.get('/:projectId/error-clusters',apiKeyAuth,getErrorClusters);
+router.get("/:projectId/overview", getOverview);
+router.get("/:projectId/events-over-time", getEventsOverTime);
+router.get("/:projectId/top-pages", getTopPages);
+router.get("/:projectId/event-breakdown", getEventBreakdown);
+router.get("/:projectId/sessions/:sessionId/timeline", getSessionTimeline);
+router.get("/:projectId/error-clusters", getErrorClusters);
 
 module.exports = router;

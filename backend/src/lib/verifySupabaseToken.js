@@ -1,5 +1,25 @@
 const jwt = require("jsonwebtoken");
 
+/**
+ * Verifies a Supabase Auth access token and returns { id, email } for the
+ * signed-in user, or throws.
+ *
+ * Supabase issues standard JWTs in the `sub` (user id) / `email` claims.
+ * Two verification strategies are supported, tried in this order:
+ *
+ *   1. HS256 shared secret (SUPABASE_JWT_SECRET) — the "Legacy JWT Secret"
+ *      shown in Supabase Dashboard -> Project Settings -> API -> JWT Settings.
+ *      This works fully offline, which is why it's what our tests use.
+ *
+ *   2. Remote JWKS (SUPABASE_URL) — for projects using the newer asymmetric
+ *      (RS256/ES256) signing keys. Requires network access to
+ *      `${SUPABASE_URL}/auth/v1/.well-known/jwks.json` at verify time, so it
+ *      only works where the backend has real internet access (e.g. Render).
+ *
+ * If neither is configured, every dashboard request is rejected with a
+ * clear config error rather than silently accepting unverified tokens.
+ */
+
 let jwksClientInstance = null;
 
 function supabaseUrl() {
@@ -46,6 +66,10 @@ class AuthError extends Error {
 async function verifySupabaseToken(token) {
   if (!token) throw new AuthError("Missing access token");
 
+  // Ask Supabase to validate the current browser session when its public
+  // project configuration is available. This supports both legacy HS256 and
+  // newer asymmetric signing keys, so Google OAuth sessions cannot be
+  // rejected merely because a stale local JWT secret is configured.
   if (supabaseUrl() && supabaseAnonKey() && typeof fetch === "function") {
     try {
       const response = await fetch(`${supabaseUrl().replace(/\/$/, "")}/auth/v1/user`, {
@@ -59,6 +83,9 @@ async function verifySupabaseToken(token) {
       throw new AuthError(detail?.msg || detail?.message || "Invalid session");
     } catch (error) {
       if (error instanceof AuthError) throw error;
+      // If Supabase is temporarily unreachable, fall through to local JWT
+      // verification rather than turning a transient network problem into a
+      // permanent dashboard outage.
     }
   }
 
@@ -96,6 +123,9 @@ async function verifySupabaseToken(token) {
 }
 
 function toUser(payload) {
+  // Raw JWT claims use `sub`; Supabase's authenticated `/user` response uses
+  // `id`. Both identify the same operator and are returned by the two
+  // verification paths above.
   const id = payload?.sub || payload?.id;
   if (!id) throw new AuthError("Session token has no subject");
   return {

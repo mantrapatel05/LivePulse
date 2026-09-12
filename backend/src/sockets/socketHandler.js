@@ -4,6 +4,22 @@ const { verifySupabaseToken } = require("../lib/verifySupabaseToken");
 
 const MAX_MESSAGE_LENGTH = 2000;
 
+/**
+ * Two connection roles, decided during the handshake and never after:
+ *
+ *   dashboard — founder's browser. Authenticates with a Supabase access
+ *   token (auth.token). Can join project:{id} / dashboard:{id} rooms, but
+ *   only for projects it actually owns.
+ *
+ *   visitor — the embedded SDK on a customer's site. Authenticates with the
+ *   project's public API key (auth.apiKey) + a sessionId it generated
+ *   itself. Can only ever be in its own chat:{projectId}:{sessionId} room —
+ *   there is no handler that lets it join anything else.
+ *
+ * Mixing these up is exactly the vulnerability this rewrite closes: a
+ * visitor should never be able to read the live event stream or another
+ * visitor's conversation, no matter what it sends over the wire.
+ */
 module.exports = (io) => {
   io.use(async (socket, next) => {
     const { token, apiKey, sessionId } = socket.handshake.auth || {};

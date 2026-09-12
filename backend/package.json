@@ -8,6 +8,7 @@
   "main": "index.js",
   "scripts": {
     "start": "nodemon server.js",
+    "test": "jest --runInBand",
     "seed:test-project": "node scripts/seedTestProject.js"
   },
   "dependencies": {

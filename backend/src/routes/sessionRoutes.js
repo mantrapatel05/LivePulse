@@ -1,9 +1,10 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 
-const { getActiveSessions } = require('../controllers/sessionController');
-const apiKeyAuth = require('../middleware/apiKeyAuth');
+const { getActiveSessions } = require("../controllers/sessionController");
+const { requireDashboardAuth } = require("../middleware/supabaseAuth");
+const { requireProjectOwnership } = require("../middleware/projectOwnership");
 
-router.get('/active', apiKeyAuth, getActiveSessions);
+router.get("/:projectId/active", requireDashboardAuth, requireProjectOwnership, getActiveSessions);
 
 module.exports = router;
