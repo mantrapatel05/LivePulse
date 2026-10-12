@@ -9,7 +9,8 @@
   "scripts": {
     "start": "nodemon server.js",
     "test": "jest --runInBand",
-    "seed:test-project": "node scripts/seedTestProject.js"
+    "seed:test-project": "node scripts/seedTestProject.js",
+    "test:redis": "jest tests/redis --runInBand --forceExit"
   },
   "dependencies": {
     "@clickhouse/client": "^1.18.2",
@@ -24,6 +25,7 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "jest": "^30.5.1",
     "nodemon": "^3.1.14"
   }
 }
