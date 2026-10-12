@@ -10,7 +10,8 @@
     "start": "nodemon server.js",
     "test": "jest --runInBand",
     "seed:test-project": "node scripts/seedTestProject.js",
-    "test:redis": "jest tests/redis --runInBand --forceExit"
+    "test:redis": "jest tests/redis --runInBand --forceExit",
+    "test:unit": "jest tests/unit --runInBand"
   },
   "dependencies": {
     "@clickhouse/client": "^1.18.2",
