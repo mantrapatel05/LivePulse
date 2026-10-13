@@ -7,6 +7,7 @@ const sessionRoutes = require("./routes/sessionRoutes");
 const projectRoutes = require("./routes/projectRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
 const chatRoutes = require("./routes/chatRoutes");
+const collectRoutes = require("./routes/collectRoutes");
 const { corsOrigin } = require("./config/corsOrigin");
 
 const app = express();
@@ -33,6 +34,7 @@ app.use("/api/sessions", sessionRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/v2/collect", collectRoutes);
 
 app.get("/", (req, res) => {
   res.send("Welcome to the LivePulse API");

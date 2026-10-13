@@ -31,7 +31,16 @@ function resolveCity(ip) {
   return city;
 }
 
+function resolveGeo(ip) {
+  if (!ip || PRIVATE_IP_RE.test(ip)) return { country: "", city: null };
+  const lookup = geoip.lookup(ip);
+  if (!lookup) return { country: "", city: null };
+  const cityParts = [lookup.city, lookup.region].filter(Boolean);
+  return { country: lookup.country || "", city: cityParts.join(", ") || null };
+}
+
 module.exports = {
   getClientIp,
   resolveCity,
+  resolveGeo,
 };
