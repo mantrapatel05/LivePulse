@@ -7,14 +7,29 @@ const ProjectSchema = new mongoose.Schema({
   },
   apiKey: {
     type: String,
-    required: true,
     index: true,
     unique: true,
+    sparse: true,
+  },
+  apiKeyPrefix: {
+    type : String,
+    index : true,
+  },
+  apiKeyHash : {
+    type : String,
+    index : true,
+    unique : true,
+    sparse : true,
+  },
+  analyticsBackend : {
+    type : String,
+    enum : ["mongo","dual","clickhouse"],
+    default : "dual",
   },
   supabaseUserId: {
     type: String,
     required: true,
-  },
+  },  
   createdAt: {
     type: Date,
     default: Date.now,

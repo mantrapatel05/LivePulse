@@ -1,4 +1,5 @@
-const Project = require("../models/Project");
+const { resolveApiKey } = require("../shared/resolveApiKey");
+const { getRedisClient } = require("../shared/redisClient");
 
 const apiKeyAuth = async (req, res, next) => {
   try {
@@ -8,7 +9,7 @@ const apiKeyAuth = async (req, res, next) => {
       return res.status(401).json({ message: "API key is missing" });
     }
 
-    const project = await Project.findOne({ apiKey });
+    const project = await resolveApiKey(getRedisClient(), apiKey);
 
     if (!project) {
       return res.status(401).json({ message: "Invalid API key" });
