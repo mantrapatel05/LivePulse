@@ -1,0 +1,72 @@
+groups:
+  - name: livepulse_pipeline_alerts
+    rules:
+      - alert: LivePulseStreamBacklogHigh
+        expr: livepulse_stream_pending_count > 5000
+        for: 5m
+        labels:
+          severity: warning
+          service: livepulse-pipeline
+        annotations:
+          summary: "Redis Stream events:v2 pending backlog is high"
+          description: "Pending entries count is {{ $value }} (above threshold of 5000) for more than 5 minutes. The worker may be struggling to drain events to ClickHouse."
+
+      - alert: LivePulseStreamBacklogCritical
+        expr: livepulse_stream_pending_count > 20000
+        for: 2m
+        labels:
+          severity: critical
+          service: livepulse-pipeline
+        annotations:
+          summary: "Redis Stream events:v2 pending backlog is critical"
+          description: "Pending entries count is {{ $value }} (above critical threshold 20000). ClickHouse ingestion worker may be stalled or crashed."
+
+      - alert: LivePulseDeadLetterQueueActivity
+        expr: rate(livepulse_dead_lettered_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: livepulse-pipeline
+        annotations:
+          summary: "Events are being moved to the dead-letter stream"
+          description: "Events exhausted delivery attempts and were moved to the dead-letter stream. Check for poison pills or invalid payloads."
+
+      - alert: LivePulseHighEventRejectionRate
+        expr: rate(livepulse_events_rejected_total[5m]) > 50
+        for: 5m
+        labels:
+          severity: warning
+          service: livepulse-collector
+        annotations:
+          summary: "High event validation rejection rate at collector"
+          description: "Collector is rejecting {{ $value }} events/sec due to schema or validation failures."
+
+      - alert: LivePulseHighRateLimitHits
+        expr: rate(livepulse_rate_limited_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: livepulse-collector
+        annotations:
+          summary: "High rate of 429 rate limit rejections"
+          description: "Rate limiter is rejecting {{ $value }} requests/sec. Possible client retry storm or API abuse."
+
+      - alert: LivePulseClickhouseInsertLatencyHigh
+        expr: histogram_quantile(0.95, rate(livepulse_clickhouse_insert_latency_ms_bucket[5m])) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: livepulse-worker
+        annotations:
+          summary: "ClickHouse batch insert p95 latency exceeds 1s"
+          description: "ClickHouse insert p95 latency is currently {{ $value }}ms, which exceeds the 1000ms threshold."
+
+      - alert: LivePulseAnalyticsQueryLatencyHigh
+        expr: histogram_quantile(0.95, rate(livepulse_query_latency_ms_bucket[5m])) > 2500
+        for: 5m
+        labels:
+          severity: warning
+          service: livepulse-api
+        annotations:
+          summary: "Dashboard analytics query p95 latency exceeds 2.5s"
+          description: "Analytics queries are slow (p95 latency {{ $value }}ms). Check ClickHouse load and materialized views."
