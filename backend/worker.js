@@ -3,6 +3,7 @@ const os = require("os");
 const { createRedisClient } = require("./src/shared/redisClient");
 const { readBatch, reclaimStale, ack, pendingCount } = require("./src/shared/redisStream");
 const { insertEvents, runMigrations } = require("./src/shared/clickhouseClient");
+const { claimClickhouseInsert, releaseClickhouseInsertClaim } = require("./src/shared/idempotency");
 const { logger, withCorrelation } = require("./src/shared/logger");
 let workerBatchSize = { observe: () => {} };
 let streamLag = { set: () => {} };
@@ -44,23 +45,53 @@ function toClickhouseDateTime(value) {
   return d.toISOString().replace("T", " ").replace("Z", "");
 }
 
-async function processBatch(entries, redis, log) {
+async function processBatch(entries, redis, log = logger) {
   if (!entries.length) return;
   workerBatchSize.observe(entries.length);
 
-  const rows = entries.filter((e) => e.event).map(toClickhouseRow);
   const badIds = entries.filter((e) => !e.event).map((e) => e.id);
+  const validEntries = entries.filter((e) => e.event);
+
+  const toInsert = [];
+  const claimed = [];
+
+  for (const entry of validEntries) {
+    const isNew = await claimClickhouseInsert(redis, entry.projectId, entry.event.eventId);
+    if (isNew) {
+      toInsert.push(entry);
+      claimed.push(entry);
+    }
+  }
+
+  const rows = toInsert.map(toClickhouseRow);
 
   if (rows.length) {
-    await insertEvents(rows);
+    try {
+      await insertEvents(rows);
+    } catch (err) {
+      await Promise.all(
+        claimed.map((e) => releaseClickhouseInsertClaim(redis, e.projectId, e.event.eventId)),
+      );
+      throw err;
+    }
   }
+
   // Malformed payloads (shouldn't happen — the API validates before
   // publishing — but a poisoned stream entry from a bug elsewhere must
   // not wedge the consumer group forever) are ACKed off immediately
   // rather than retried, since retrying won't make invalid JSON valid.
   await ack(redis, [...entries.map((e) => e.id)]);
 
-  log.info({ inserted: rows.length, malformedSkipped: badIds.length }, "batch processed");
+  if (log && log.info) {
+    log.info(
+      {
+        inserted: rows.length,
+        malformedSkipped: badIds.length,
+        duplicatesSkipped: validEntries.length - toInsert.length,
+      },
+      "batch processed",
+    );
+  }
 }
 
 async function loop(redis) {

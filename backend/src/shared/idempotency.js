@@ -6,4 +6,20 @@ async function claimEventId(redis, projectId, eventId) {
   return result === "OK"; // true = first time seeing this eventId, false = duplicate
 }
 
-module.exports = { claimEventId, IDEMPOTENCY_TTL_SECONDS };
+async function claimClickhouseInsert(redis, projectId, eventId) {
+  const key = eventId ? `idempotency:ch:${projectId}:${eventId}` : `idempotency:ch:${projectId}`;
+  const result = await redis.set(key, "1", "EX", IDEMPOTENCY_TTL_SECONDS, "NX");
+  return result === "OK";
+}
+
+async function releaseClickhouseInsertClaim(redis, projectId, eventId) {
+  const key = eventId ? `idempotency:ch:${projectId}:${eventId}` : `idempotency:ch:${projectId}`;
+  await redis.del(key);
+}
+
+module.exports = {
+  claimEventId,
+  claimClickhouseInsert,
+  releaseClickhouseInsertClaim,
+  IDEMPOTENCY_TTL_SECONDS,
+};

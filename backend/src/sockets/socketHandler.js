@@ -1,8 +1,18 @@
 const Project = require("../models/Project");
 const ChatMessage = require("../models/ChatMessage");
 const { verifySupabaseToken } = require("../lib/verifySupabaseToken");
+const { resolveApiKey } = require("../shared/resolveApiKey");
+const { getRedisClient, checkRedisReady } = require("../shared/redisClient");
+const { checkClickhouseReady } = require("../shared/clickhouseClient");
+const { pendingCount } = require("../shared/redisStream");
+const { logger } = require("../shared/logger");
+let socketConnections = { inc: () => {}, dec: () => {} };
+try {
+  ({ socketConnections } = require("../shared/metrics"));
+} catch {}
 
 const MAX_MESSAGE_LENGTH = 2000;
+const HEALTH_BROADCAST_MS = 15000;
 
 /**
  * Two connection roles, decided during the handshake and never after:
@@ -21,6 +31,8 @@ const MAX_MESSAGE_LENGTH = 2000;
  * visitor's conversation, no matter what it sends over the wire.
  */
 module.exports = (io) => {
+  const redis = getRedisClient();
+
   io.use(async (socket, next) => {
     const { token, apiKey, sessionId } = socket.handshake.auth || {};
 
@@ -37,7 +49,11 @@ module.exports = (io) => {
         if (!sessionId || typeof sessionId !== "string" || sessionId.length > 200) {
           return next(new Error("sessionId is required for visitor connections"));
         }
-        const project = await Project.findOne({ apiKey });
+        // resolveApiKey, not a raw Project.findOne({apiKey}) — new (V2,
+        // hashed-key) projects have no plaintext apiKey field to match
+        // against at all, so the naive lookup would silently reject every
+        // visitor on every project created after the hashing migration.
+        const project = await resolveApiKey(redis, apiKey);
         if (!project) return next(new Error("Invalid API key"));
         socket.data.role = "visitor";
         socket.data.project = project;
@@ -53,19 +69,23 @@ module.exports = (io) => {
 
   io.on("connection", (socket) => {
     if (socket.data.role === "dashboard") {
+      socketConnections.inc({ role: "dashboard" });
       attachDashboardHandlers(io, socket);
     } else {
+      socketConnections.inc({ role: "visitor" });
       attachVisitorHandlers(io, socket);
     }
 
     socket.on("disconnect", () => {
-      // Room membership is cleaned up automatically by Socket.IO.
+      socketConnections.dec({ role: socket.data.role });
     });
   });
+
+  startHealthBroadcast(io, redis);
 };
 
 function attachDashboardHandlers(io, socket) {
-  console.log(`[socket] dashboard connected: ${socket.id} (user ${socket.data.user.id})`);
+  logger.info({ socketId: socket.id, userId: socket.data.user.id }, "dashboard socket connected");
 
   socket.on("join_project", async ({ projectId } = {}, ack) => {
     try {
@@ -101,23 +121,12 @@ function attachDashboardHandlers(io, socket) {
         .slice(0, MAX_MESSAGE_LENGTH);
       if (!text) throw new Error("Message is empty");
 
-      const saved = await ChatMessage.create({
-        projectId,
-        sessionId,
-        sender: "founder",
-        message: text,
-      });
+      const saved = await ChatMessage.create({ projectId, sessionId, sender: "founder", message: text });
+      const payload = { sessionId, projectId, message: text, sender: "founder", timestamp: saved.createdAt };
 
-      const payload = {
-        sessionId,
-        projectId,
-        message: text,
-        sender: "founder",
-        timestamp: saved.createdAt,
-      };
-
-      // Canonical event name the visitor SDK listens for.
-      io.to(`chat:${projectId}:${sessionId}`).emit("founder_message", payload);
+      const room = `chat:${projectId}:${sessionId}`;
+      io.to(room).emit("chat:message", payload); // canonical (V2)
+      io.to(room).emit("founder_message", payload); // V1 alias, compatibility window
       if (typeof ack === "function") ack({ ok: true, message: payload });
     } catch (error) {
       if (typeof ack === "function") ack({ ok: false, error: error.message });
@@ -130,7 +139,7 @@ function attachVisitorHandlers(io, socket) {
   const { project, sessionId } = socket.data;
   const room = `chat:${project._id}:${sessionId}`;
   socket.join(room);
-  console.log(`[socket] visitor connected: ${socket.id} -> ${room}`);
+  logger.info({ socketId: socket.id, room }, "visitor socket connected");
 
   socket.on("user_reply", async ({ message } = {}, ack) => {
     try {
@@ -139,13 +148,7 @@ function attachVisitorHandlers(io, socket) {
         .slice(0, MAX_MESSAGE_LENGTH);
       if (!text) throw new Error("Message is empty");
 
-      const saved = await ChatMessage.create({
-        projectId: project._id,
-        sessionId,
-        sender: "user",
-        message: text,
-      });
-
+      const saved = await ChatMessage.create({ projectId: project._id, sessionId, sender: "user", message: text });
       const payload = {
         sessionId,
         projectId: String(project._id),
@@ -154,12 +157,41 @@ function attachVisitorHandlers(io, socket) {
         timestamp: saved.createdAt,
       };
 
-      // Canonical event name the dashboard listens for.
-      io.to(`dashboard:${project._id}`).emit("user_reply", payload);
+      const dashboardRoom = `dashboard:${project._id}`;
+      io.to(dashboardRoom).emit("chat:message", payload); // canonical (V2)
+      io.to(dashboardRoom).emit("user_reply", payload); // V1 alias, compatibility window
       if (typeof ack === "function") ack({ ok: true });
     } catch (error) {
       if (typeof ack === "function") ack({ ok: false, error: error.message });
       else socket.emit("chat_error", { error: error.message });
     }
   });
+}
+
+/**
+ * Periodic system:health push so a connected dashboard's queue/connection
+ * indicator updates without waiting on its own poll interval. This is a
+ * broadcast to every socket, not per-project — it reports the shared
+ * events:v2 pipeline's health, which is genuinely process-wide (see the
+ * same caveat in healthController.getProjectHealth).
+ */
+function startHealthBroadcast(io, redis) {
+  const timer = setInterval(async () => {
+    try {
+      const [redisOk, clickhouseOk, pending] = await Promise.all([
+        checkRedisReady(),
+        checkClickhouseReady(),
+        pendingCount(redis),
+      ]);
+      io.emit("system:health", {
+        redisOk,
+        clickhouseOk,
+        streamPendingCountProcessWide: pending,
+        at: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.warn({ err: err.message }, "system:health broadcast failed");
+    }
+  }, HEALTH_BROADCAST_MS);
+  timer.unref?.(); // don't hold the process open just for this
 }
