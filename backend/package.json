@@ -12,7 +12,8 @@
     "seed:test-project": "node scripts/seedTestProject.js",
     "test:redis": "jest tests/redis --runInBand --forceExit",
     "test:unit": "jest tests/unit --runInBand",
-    "migrate:clickhouse": "node scripts/runClickhouseMigrations.js"
+    "migrate:clickhouse": "node scripts/runClickhouseMigrations.js",
+    "worker": "node worker.js"
   },
   "dependencies": {
     "@clickhouse/client": "^1.18.2",
