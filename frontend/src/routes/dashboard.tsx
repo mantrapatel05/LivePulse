@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Brand } from "../components/lp/Brand";
 import { ControlRoom } from "../components/lp/ControlRoom";
+import { ControlRoomV2 } from "../components/lp/ControlRoomV2";
 import { useAuth } from "../lib/auth";
 import { ACTIVE_PROJECT_KEY, API_URL } from "../lib/config";
 import { createProject, listProjects, type LPProject } from "../lib/api";
@@ -265,5 +266,14 @@ function FirstProject({
 
 function ControlRoomPlaceholder({ project }: { project: LPProject | null }) {
   if (!project) return null;
+  // Per-project migration flag (see Project.analyticsBackend): 'clickhouse'
+  // projects get the V2 signal engine (date range, ClickHouse-backed
+  // queries, session timeline); everything else keeps using the exact V1
+  // control room it's always used, unchanged. This is the actual
+  // mechanism behind "move dashboard analytics reads to V2 APIs behind a
+  // per-project feature flag" — not a big-bang UI cutover.
+  if (project.analyticsBackend === "clickhouse") {
+    return <ControlRoomV2 project={project} />;
+  }
   return <ControlRoom project={project} />;
 }

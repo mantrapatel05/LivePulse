@@ -4,8 +4,13 @@ import { getSupabase } from "./supabaseClient";
 export type LPProject = {
   _id: string;
   name: string;
-  apiKey: string;
+  // Only ever present in the createProject/rotateKey response bodies —
+  // the backend stores nothing but a hash from that point on, so any
+  // other read (listProjects, a page refresh) will not include this.
+  apiKey?: string;
+  apiKeyPrefix?: string;
   supabaseUserId?: string;
+  analyticsBackend?: "mongo" | "dual" | "clickhouse";
   createdAt?: string;
 };
 
@@ -97,10 +102,19 @@ export function rotateKey(projectId: string) {
   ).then(unwrapProject);
 }
 
+/**
+ * The snippet *template* only — the backend can no longer supply the real
+ * key here (it only ever exists as a hash after creation/rotation). The
+ * caller must substitute the plaintext key it captured from the create/
+ * rotate response itself; see InstallPanel in ControlRoom.tsx.
+ */
 export function getEmbedSnippet(projectId: string) {
-  return dashboardRequest<{ snippet: string; backendOrigin: string; apiKey: string }>(
-    `/api/projects/${projectId}/embed`,
-  );
+  return dashboardRequest<{
+    projectId: string;
+    apiKeyPrefix: string | null;
+    backendOrigin: string;
+    snippetTemplate: string;
+  }>(`/api/projects/${projectId}/embed`);
 }
 
 /* ---------- analytics / sessions / chat (dashboard session required) ---------- */

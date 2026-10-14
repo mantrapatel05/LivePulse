@@ -246,15 +246,21 @@ export function ControlRoom({ project }: { project: LPProject }) {
           <ChatDock projectId={pid} sessionId={selected} />
         </Panel>
 
-        <InstallPanel projectId={pid} />
+        <InstallPanel project={project} />
       </div>
     </div>
   );
 }
 
-function InstallPanel({ projectId }: { projectId: string }) {
-  const [snippet, setSnippet] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState<string | null>(null);
+export function InstallPanel({ project }: { project: LPProject }) {
+  const projectId = project._id;
+  const [snippetTemplate, setSnippetTemplate] = useState<string | null>(null);
+  const [apiKeyPrefix, setApiKeyPrefix] = useState<string | null>(null);
+  // Only ever set right here in-memory: from the project prop immediately
+  // after creation, or from a rotate() response in this same session.
+  // Never re-fetched — there is nothing to re-fetch, the backend doesn't
+  // store it.
+  const [revealedKey, setRevealedKey] = useState<string | null>(project.apiKey ?? null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [rotating, setRotating] = useState(false);
@@ -263,22 +269,30 @@ function InstallPanel({ projectId }: { projectId: string }) {
     setError(null);
     try {
       const res = await getEmbedSnippet(projectId);
-      setSnippet(res.snippet);
-      setApiKey(res.apiKey);
+      setSnippetTemplate(res.snippetTemplate);
+      setApiKeyPrefix(res.apiKeyPrefix);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't load the embed snippet.");
     }
   }
 
   useEffect(() => {
+    setRevealedKey(project.apiKey ?? null);
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
+  const fullSnippet =
+    snippetTemplate && revealedKey ? snippetTemplate.replace("{{API_KEY}}", revealedKey) : null;
+  const maskedSnippet =
+    snippetTemplate && apiKeyPrefix
+      ? snippetTemplate.replace("{{API_KEY}}", `${apiKeyPrefix}••••••••••••••••`)
+      : null;
+
   async function copy() {
-    if (!snippet) return;
+    if (!fullSnippet) return;
     try {
-      await navigator.clipboard.writeText(snippet);
+      await navigator.clipboard.writeText(fullSnippet);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
@@ -290,7 +304,8 @@ function InstallPanel({ projectId }: { projectId: string }) {
     if (!confirm("Rotate this project's API key? The old key stops working immediately.")) return;
     setRotating(true);
     try {
-      await rotateKey(projectId);
+      const updated = await rotateKey(projectId);
+      setRevealedKey(updated.apiKey ?? null); // the one-time reveal, from this response only
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't rotate the key.");
@@ -321,17 +336,27 @@ function InstallPanel({ projectId }: { projectId: string }) {
           {error}
         </div>
       )}
-      {snippet && (
+      {fullSnippet && (
         <>
-          <pre className="lp-code">{snippet}</pre>
+          <pre className="lp-code">{fullSnippet}</pre>
           <button type="button" className="lp-btn small" onClick={() => void copy()}>
             {copied ? "copied ✓" : "copy snippet"}
           </button>
           <p className="lp-empty">
-            API key <code>{apiKey}</code> — treat it as public; it only writes events and never
-            reads your data. Chat is enabled by default; drop <code>data-chat="false"</code> to
-            disable it.
+            This is the only time this key is shown in full — copy it now. It's still safe to embed
+            publicly: it only writes events and can never read your data. Chat is enabled by
+            default; drop <code>data-chat="false"</code> to disable it.
           </p>
+        </>
+      )}
+      {!fullSnippet && maskedSnippet && (
+        <>
+          <pre className="lp-code">{maskedSnippet}</pre>
+          <div className="lp-alert warn" role="status">
+            <b>Key hidden after creation</b>
+            LivePulse only stores a hash of your API key, so it can't be shown again here. Rotate to
+            get a fresh one — the old key stops working the moment you do.
+          </div>
         </>
       )}
     </Panel>
