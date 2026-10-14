@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LivePulse — one-tag install smoke test</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 24px; max-width: 640px; }
+    button { padding: 10px 14px; margin-right: 8px; cursor: pointer; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; }
+    pre { background: #f4f4f4; padding: 12px; border-radius: 8px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>LivePulse — local smoke test</h1>
+  <p>
+    This page installs LivePulse the way a real customer would: one
+    <code>&lt;script&gt;</code> tag, no manual <code>init()</code> call.
+    Open the LivePulse dashboard in another tab (same project) to watch
+    events and chat arrive here.
+  </p>
+
+  <ol>
+    <li>Run the backend: <code>cd LivePulse/backend &amp;&amp; npm run build:sdk &amp;&amp; npm run dev</code></li>
+    <li>Seed a test project: <code>npm run seed:test-project</code></li>
+    <li>Open this file directly in a browser (no server needed for the HTML itself)</li>
+  </ol>
+
+  <button id="customBtn">Send Custom Event</button>
+
+  <p>Chat bubble should appear bottom-right (chat is enabled below).</p>
+
+  <!--
+    THE ONE-TAG INSTALL — this is the entire integration.
+    data-key   → project's public ingestion API key (safe to expose, write-only)
+    data-api   → your LivePulse backend origin
+    data-chat  → "true" to enable the visitor chat bubble
+  -->
+  <script
+    src="../backend/public/sdk/livepulse.js"
+    data-key="lp_test_local_key_123"
+    data-api="http://localhost:5000"
+    data-chat="true"
+    data-consent="required"
+    defer
+  ></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      document.getElementById('customBtn').addEventListener('click', function () {
+        if (window.LivePulse) {
+          window.LivePulse.track('custom', { source: 'customBtn', at: new Date().toISOString() });
+        }
+      });
+    });
+  </script>
+</body>
+</html>

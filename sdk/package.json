@@ -1,0 +1,14 @@
+{
+  "name": "@livepulse/sdk",
+  "version": "2.0.0",
+  "private": true,
+  "description": "LivePulse embeddable tracking + chat SDK",
+  "main": "src/livepulse.js",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1",
+    "vitest": "^2.1.5"
+  }
+}
