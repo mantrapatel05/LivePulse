@@ -17,7 +17,8 @@
     "build:sdk": "node scripts/buildSdk.js",
     "backfill:clickhouse": "node scripts/backfillClickhouse.js",
     "check:parity": "node scripts/checkParity.js",
-    "set:analytics-backend": "node scripts/setAnalyticsBackend.js"
+    "set:analytics-backend": "node scripts/setAnalyticsBackend.js",
+    "seed:fixtures": "node scripts/seedFixtures.js"
   },
   "dependencies": {
     "@clickhouse/client": "^1.18.2",
