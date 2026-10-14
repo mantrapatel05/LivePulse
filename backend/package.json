@@ -14,7 +14,10 @@
     "test:unit": "jest tests/unit --runInBand",
     "migrate:clickhouse": "node scripts/runClickhouseMigrations.js",
     "worker": "node worker.js",
-    "build:sdk": "node scripts/buildSdk.js"
+    "build:sdk": "node scripts/buildSdk.js",
+    "backfill:clickhouse": "node scripts/backfillClickhouse.js",
+    "check:parity": "node scripts/checkParity.js",
+    "set:analytics-backend": "node scripts/setAnalyticsBackend.js"
   },
   "dependencies": {
     "@clickhouse/client": "^1.18.2",
