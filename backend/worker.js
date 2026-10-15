@@ -22,7 +22,13 @@ function toClickhouseRow(entry) {
   const e = entry.event;
   return {
     project_id: entry.projectId,
-    event_id: e.eventId,
+    // Canonical event_id: mongo:<ObjectId> on both live + backfill paths.
+    // dual-mode events carry mongoEventId from the pipeline (Mongo was
+    // written first, so the _id exists). clickhouse-mode projects skip
+    // Mongo entirely, so fall back to the V2 eventId namespaced as live:.
+    // Either way the SAME logical event always maps to the SAME event_id,
+    // which is what makes live-vs-backfill dedupe converge.
+    event_id: e.mongoEventId || `live:${e.eventId}`,
     session_id: e.sessionId,
     user_id: e.userId || "anonymous",
     event_type: e.eventType,

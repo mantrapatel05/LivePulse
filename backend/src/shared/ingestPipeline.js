@@ -62,7 +62,21 @@ async function ingestBatch({ project, rawEvents, req }) {
       browser: ua.browser,
     };
 
+    // Canonical ordering: Mongo FIRST, then the stream.
+    // The Mongo _id is the durable identity of this occurrence, and the
+    // ClickHouse event_id is derived from it (`mongo:<ObjectId>`) on BOTH
+    // the live path (here, via mongoEventId on the enriched payload) and
+    // the backfill path (deterministicEventId). Same logical event =>
+    // same event_id no matter which path wrote it, so parity holds and
+    // dedupe actually converges instead of double-counting.
     try {
+      let mongoDoc = null;
+      if (project.analyticsBackend !== "clickhouse") {
+        const written = await dualWriteMongo({ project, event: enriched, io });
+        mongoDoc = written.event;
+        enriched.mongoEventId = `mongo:${String(mongoDoc._id)}`;
+      }
+
       await publishEvent(redis, { projectId: String(project._id), event: enriched, correlationId });
       await touchSession(redis, {
         projectId: String(project._id),
@@ -72,10 +86,6 @@ async function ingestBatch({ project, rawEvents, req }) {
       });
 
       emitLive(io, project._id, enriched);
-
-      if (project.analyticsBackend !== "clickhouse") {
-        await dualWriteMongo({ project, event: enriched, io });
-      }
 
       eventsAccepted.inc({ project_id: String(project._id) });
       acceptedCount++;
@@ -139,7 +149,7 @@ async function dualWriteMongo({ project, event, io }) {
       $setOnInsert: { startedAt: event.occurredAt },
       $inc: { eventCount: 1 },
     },
-    { upsert: true, new: true },
+    { upsert: true, returnDocument: "after" },
   );
 
   if (io) {

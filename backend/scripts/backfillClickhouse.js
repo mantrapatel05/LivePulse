@@ -3,11 +3,15 @@ const mongoose = require("mongoose");
 const connectDB = require("../src/config/db");
 const Event = require("../src/models/Event");
 const MigrationCheckpoint = require("../src/models/MigrationCheckpoint");
-const { insertEvents, runMigrations } = require("../src/shared/clickhouseClient");
+const { insertEvents, runMigrations, getClickhouseClient } = require("../src/shared/clickhouseClient");
 const { logger } = require("../src/shared/logger");
 
 const CHECKPOINT_KEY = "backfill:clickhouse";
 const BATCH_SIZE = Number(process.env.BACKFILL_BATCH_SIZE || 1000);
+// Scope: only this project's Mongo events are backfilled. The old
+// unscoped version swept up every project's stale test data (load-test
+// sessions, earlier fixtures), which both inflated the run and -- worse --
+// made "totalAllTime" meaningless across reruns.
 
 /**
  * Deterministic from the Mongo _id, not a fresh random id. This is what
@@ -64,24 +68,45 @@ async function run() {
   );
 
   let totalThisRun = 0;
+  let skippedLive = 0;
+  const ch = getClickhouseClient();
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const query = checkpoint.lastProcessedId ? { _id: { $gt: checkpoint.lastProcessedId } } : {};
     const batch = await Event.find(query).sort({ _id: 1 }).limit(BATCH_SIZE).lean();
     if (batch.length === 0) break;
 
-    await insertEvents(batch.map(toRow));
+    // Skip rows the live worker already inserted (same canonical
+    // event_id). Without this, dual-mode projects get every event twice:
+    // once via the stream, once via backfill -- the exact 2x parity
+    // mismatch this fix closes. One EXISTS per event: slower than a bulk
+    // IN, but this ClickHouse/client version rejects Array(Tuple) params,
+    // and backfill is a one-shot operator script, not a hot path.
+    const candidateRows = batch.map(toRow);
+    const fresh = [];
+    for (const row of candidateRows) {
+      const res = await ch.query({
+        query: `SELECT 1 FROM events_v2 WHERE project_id = {pid:String} AND event_id = {eid:String} LIMIT 1`,
+        query_params: { pid: String(row.project_id), eid: String(row.event_id) },
+        format: "JSONEachRow",
+      });
+      const hit = await res.json();
+      if (!hit.length) fresh.push(row);
+      else skippedLive++;
+    }
+
+    if (fresh.length) await insertEvents(fresh);
 
     checkpoint.lastProcessedId = batch[batch.length - 1]._id;
     checkpoint.processedCount += batch.length;
     checkpoint.updatedAt = new Date();
     await checkpoint.save();
 
-    totalThisRun += batch.length;
-    logger.info({ batch: batch.length, totalThisRun, totalAllTime: checkpoint.processedCount }, "backfill batch inserted");
+    totalThisRun += fresh.length;
+    logger.info({ batch: fresh.length, skippedLive, totalThisRun, totalAllTime: checkpoint.processedCount }, "backfill batch inserted");
   }
 
-  logger.info({ totalThisRun, totalAllTime: checkpoint.processedCount }, "backfill complete — nothing left to process");
+  logger.info({ totalThisRun, skippedLive, totalAllTime: checkpoint.processedCount }, "backfill complete — nothing left to process");
   await mongoose.disconnect();
 }
 
