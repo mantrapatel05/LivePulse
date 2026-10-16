@@ -58,16 +58,18 @@ async function processBatch(entries, redis, log = logger) {
   const badIds = entries.filter((e) => !e.event).map((e) => e.id);
   const validEntries = entries.filter((e) => e.event);
 
-  const toInsert = [];
-  const claimed = [];
-
-  for (const entry of validEntries) {
-    const isNew = await claimClickhouseInsert(redis, entry.projectId, entry.event.eventId);
-    if (isNew) {
-      toInsert.push(entry);
-      claimed.push(entry);
-    }
-  }
+  // Claims in parallel, keyed on the CANONICAL event_id (same value
+  // toClickhouseRow writes) so live/backfill/retries converge instead of
+  // claiming one key and inserting under another.
+  const claims = await Promise.all(
+    validEntries.map((e) => {
+      const row = toClickhouseRow(e);
+      e._canonicalId = row.event_id;
+      return claimClickhouseInsert(redis, e.projectId, row.event_id);
+    }),
+  );
+  const toInsert = validEntries.filter((_, i) => claims[i]);
+  const claimed = toInsert;
 
   const rows = toInsert.map(toClickhouseRow);
 
@@ -75,8 +77,12 @@ async function processBatch(entries, redis, log = logger) {
     try {
       await insertEvents(rows);
     } catch (err) {
+      // Roll back, or the retry would skip these as "already inserted" and lose them.
+      // Release by canonical event_id (same key claimed above), not the raw SDK id.
       await Promise.all(
-        claimed.map((e) => releaseClickhouseInsertClaim(redis, e.projectId, e.event.eventId)),
+        claimed.map((e) =>
+          releaseClickhouseInsertClaim(redis, e.projectId, e._canonicalId || `live:${e.event.eventId}`),
+        ),
       );
       throw err;
     }

@@ -32,6 +32,32 @@ async function touchSession(redis, { projectId, sessionId, url, userId }) {
   await pipeline.exec();
 }
 
+/**
+ * Queue session touches for a whole batch onto an existing pipeline: one
+ * touch per DISTINCT session, last write wins in send order. A batch is
+ * almost always one session, so this collapses N per-event touches into
+ * ~1 block of pipelined commands with zero extra round trips.
+ */
+function queueSessionTouches(pipeline, projectId, events) {
+  const latest = new Map();
+  for (const e of events) latest.set(e.sessionId, e);
+  const now = Date.now();
+  const zkey = zsetKey(projectId);
+  for (const e of latest.values()) {
+    const hkey = hashKey(projectId, e.sessionId);
+    pipeline.zadd(zkey, now, e.sessionId);
+    pipeline.expire(zkey, ACTIVE_TTL_SECONDS);
+    pipeline.hset(hkey, {
+      sessionId: e.sessionId,
+      userId: e.userId || "anonymous",
+      currentUrl: e.url || "",
+      lastSeenAt: String(now),
+    });
+    pipeline.hsetnx(hkey, "startedAt", String(now));
+    pipeline.expire(hkey, ACTIVE_TTL_SECONDS);
+  }
+}
+
 /** Sessions active within the last `windowMs` (default: the same 5-minute TTL window). */
 async function listActiveSessions(redis, projectId, windowMs = ACTIVE_TTL_SECONDS * 1000) {
   const zkey = zsetKey(projectId);
@@ -61,4 +87,4 @@ async function activeCount(redis, projectId, windowMs = ACTIVE_TTL_SECONDS * 100
   return redis.zcount(zkey, cutoff, "+inf");
 }
 
-module.exports = { touchSession, listActiveSessions, activeCount, ACTIVE_TTL_SECONDS };
+module.exports = { touchSession, queueSessionTouches, listActiveSessions, activeCount, ACTIVE_TTL_SECONDS };

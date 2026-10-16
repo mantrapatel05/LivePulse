@@ -18,6 +18,24 @@ async function publishEvent(redis,{projectId,event,correlationId}){
     return id;
 }
 
+/**
+ * Queue one XADD onto an existing pipeline instead of awaiting it.
+ * Lets the caller batch N publishes + session touches into a single
+ * round trip (see ingestPipeline.js).
+ */
+function queuePublish(pipeline, { projectId, event, correlationId }) {
+  pipeline.xadd(
+    STREAM_KEY,
+    "*",
+    "projectId",
+    String(projectId),
+    "correlationId",
+    correlationId || "",
+    "payload",
+    JSON.stringify(event),
+  );
+}
+
 async function ensureConsumerGroup(redis) {
     try {
       await redis.xgroup("CREATE", STREAM_KEY, CONSUMER_GROUP, "0", "MKSTREAM");
@@ -140,6 +158,7 @@ module.exports = {
     MAX_DELIVERY_ATTEMPTS,
     ensureConsumerGroup,
     publishEvent,
+    queuePublish,
     readBatch,
     ack,
     reclaimStale,

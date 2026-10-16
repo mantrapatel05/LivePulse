@@ -17,6 +17,16 @@ const collect = async (req, res) => {
 
   try {
     const result = await ingestBatch({ project: req.project, rawEvents: req.body.events, req });
+    if (result.internalFailures > 0) {
+      // SDK keeps the batch on non-2xx and retries; idempotency claims
+      // make the retry safe for events that already went through.
+      return res.status(503).json({
+        message: "Some events could not be accepted, retry the batch",
+        accepted: result.accepted,
+        internalFailures: result.internalFailures,
+        correlationId: result.correlationId,
+      });
+    }
     return res.status(202).json({
       accepted: result.accepted,
       rejected: result.rejected,

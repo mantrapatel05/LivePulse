@@ -65,6 +65,14 @@ const socketConnections = new client.Gauge({
   registers: [register],
 });
 
+const ingestStage = new client.Histogram({
+  name: "livepulse_ingest_stage_ms",
+  help: "Time spent in each ingestion stage",
+  labelNames: ["stage"], // "claim" | "publish" | "mongo"
+  buckets: [1, 2, 5, 10, 25, 50, 100, 250, 500],
+  registers: [register],
+});
+
 module.exports = {
   register,
   eventsAccepted,
@@ -76,4 +84,5 @@ module.exports = {
   clickhouseInsertLatency,
   queryLatency,
   socketConnections,
+  ingestStage,
 };

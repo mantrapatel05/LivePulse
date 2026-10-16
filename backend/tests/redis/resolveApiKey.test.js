@@ -20,31 +20,46 @@ afterAll(async () => {
 });
 
 describe("resolveApiKey", () => {
-  it("resolves a V2 hashed key via Mongo on a cold cache, then serves from Redis on the next call", async () => {
+  it("resolves a V2 hashed key via Mongo on a cold cache, then serves a snapshot from Redis with zero Mongo on the next call", async () => {
     const { plaintext, hash } = generateApiKey();
-    const fakeProject = { _id: "proj1", apiKeyHash: hash };
+    const fakeProject = { _id: "proj1", apiKeyHash: hash, analyticsBackend: "dual" };
     Project.findOne.mockResolvedValue(fakeProject);
     Project.findById.mockResolvedValue(fakeProject);
 
     const first = await resolveApiKey(redis, plaintext);
-    expect(first).toBe(fakeProject);
+    expect(first).toEqual({ _id: "proj1", analyticsBackend: "dual" });
     expect(Project.findOne).toHaveBeenCalledWith({ apiKeyHash: hash });
 
-    // second call should hit the Redis cache -> findById, not findOne again
+    // second call must hit the Redis snapshot -- NO Mongo at all, not even findById. That's the whole point.
     Project.findOne.mockClear();
+    Project.findById.mockClear();
     const second = await resolveApiKey(redis, plaintext);
-    expect(second).toBe(fakeProject);
+    expect(second).toEqual({ _id: "proj1", analyticsBackend: "dual" });
     expect(Project.findOne).not.toHaveBeenCalled();
-    expect(Project.findById).toHaveBeenCalledWith("proj1");
+    expect(Project.findById).not.toHaveBeenCalled(); // the whole point
+  });
+
+  it("migrates an old-format (bare id) cache entry to a snapshot without breaking auth", async () => {
+    const { plaintext, hash } = generateApiKey();
+    await redis.set(`apikey:${hash}`, "proj1", "EX", 60); // pre-snapshot format
+    Project.findById.mockResolvedValue({ _id: "proj1", analyticsBackend: "clickhouse" });
+
+    const project = await resolveApiKey(redis, plaintext);
+    expect(project).toEqual({ _id: "proj1", analyticsBackend: "clickhouse" });
+    // cache is now the new snapshot format
+    expect(JSON.parse(await redis.get(`apikey:${hash}`))).toEqual({
+      _id: "proj1",
+      analyticsBackend: "clickhouse",
+    });
   });
 
   it("falls back to a legacy plaintext match when there's no hash match", async () => {
     Project.findOne
       .mockResolvedValueOnce(null) // apiKeyHash miss
-      .mockResolvedValueOnce({ _id: "legacy1", apiKey: "lp_old_plaintext_key" }); // legacy hit
+      .mockResolvedValueOnce({ _id: "legacy1", apiKey: "lp_old_plaintext_key", analyticsBackend: "mongo" }); // legacy hit
 
     const project = await resolveApiKey(redis, "lp_old_plaintext_key");
-    expect(project).toEqual({ _id: "legacy1", apiKey: "lp_old_plaintext_key" });
+    expect(project).toEqual({ _id: "legacy1", analyticsBackend: "mongo" });
     expect(Project.findOne).toHaveBeenNthCalledWith(2, { apiKey: "lp_old_plaintext_key" });
   });
 
@@ -55,11 +70,14 @@ describe("resolveApiKey", () => {
 
   it("rotation invalidation removes the old key from cache immediately", async () => {
     const { plaintext: oldPlain, hash: oldHash } = generateApiKey();
-    Project.findOne.mockResolvedValue({ _id: "proj1", apiKeyHash: oldHash });
-    Project.findById.mockResolvedValue({ _id: "proj1", apiKeyHash: oldHash });
+    Project.findOne.mockResolvedValue({ _id: "proj1", apiKeyHash: oldHash, analyticsBackend: "dual" });
+    Project.findById.mockResolvedValue({ _id: "proj1", apiKeyHash: oldHash, analyticsBackend: "dual" });
 
     await resolveApiKey(redis, oldPlain); // primes the cache
-    expect(await redis.get(`apikey:${oldHash}`)).toBe("proj1");
+    expect(JSON.parse(await redis.get(`apikey:${oldHash}`))).toEqual({
+      _id: "proj1",
+      analyticsBackend: "dual",
+    });
 
     await invalidateApiKeyCache(redis, { hash: oldHash });
     expect(await redis.get(`apikey:${oldHash}`)).toBeNull();
@@ -73,7 +91,7 @@ describe("resolveApiKey", () => {
 
   it("hashing is one-directional in cache keys — the plaintext key never appears in Redis", async () => {
     const { plaintext, hash } = generateApiKey();
-    Project.findOne.mockResolvedValue({ _id: "proj1", apiKeyHash: hash });
+    Project.findOne.mockResolvedValue({ _id: "proj1", apiKeyHash: hash, analyticsBackend: "dual" });
     await resolveApiKey(redis, plaintext);
 
     const keys = await redis.keys("apikey:*");
