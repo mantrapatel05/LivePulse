@@ -9,8 +9,9 @@ const {
 } = require("../controllers/projectController");
 const { requireDashboardAuth } = require("../middleware/supabaseAuth");
 const { requireProjectOwnership } = require("../middleware/projectOwnership");
+const { dashboardRateLimit } = require("../middleware/dashboardRateLimit");
 
-router.use(requireDashboardAuth);
+router.use(requireDashboardAuth, dashboardRateLimit);
 
 router.post("/", createProject);
 router.get("/", listProjects);

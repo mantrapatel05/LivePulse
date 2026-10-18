@@ -222,18 +222,18 @@
     return chunks;
   }
 
-  function flush(sync) {
+  function flush() {
     drainInflightIntoPersisted();
     var queue = loadPersistedQueue();
     if (!queue.length) return;
 
     var chunks = chunkBySize(queue);
     chunks.forEach(function (chunk) {
-      sendBatch(chunk, { sync: !!sync });
+      sendBatch(chunk);
     });
   }
 
-  function sendBatch(events, opts) {
+  function sendBatch(events) {
     var envelope = {
       schemaVersion: SCHEMA_VERSION,
       sentAt: new Date().toISOString(),
@@ -241,15 +241,9 @@
     };
     var body = JSON.stringify(envelope);
 
-    if (opts.sync && navigator.sendBeacon) {
-      // sendBeacon is fire-and-forget by design (no response, no retry) --
-      // the right tradeoff for "the page is closing right now", not a bug.
-      var blob = new Blob([body], { type: "application/json" });
-      var sent = navigator.sendBeacon(_endpoint + "?key=" + encodeURIComponent(_apiKey), blob);
-      if (sent) removeFromPersistedQueue(events);
-      return;
-    }
-
+    // Keepalive fetch preserves the API key header and lets the browser finish
+    // delivery after page teardown. Never put credentials in a URL: URLs are
+    // routinely recorded in proxy, analytics, and server logs.
     fetch(_endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": _apiKey },
@@ -394,7 +388,7 @@
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState === "hidden") {
         trackTimeOnPage();
-        flush(true);
+        flush();
       } else if (document.visibilityState === "visible") {
         _pageStartTime = Date.now();
       }
@@ -436,10 +430,10 @@
     }, FLUSH_INTERVAL_MS);
     window.addEventListener("beforeunload", function () {
       trackTimeOnPage();
-      flush(true);
+      flush();
     });
     window.addEventListener("pagehide", function () {
-      flush(true);
+      flush();
     });
   }
 
@@ -738,7 +732,7 @@
     },
 
     flush: function () {
-      flush(false);
+      flush();
     },
 
     getSessionId: function () {

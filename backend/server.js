@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { createAdapter } = require("@socket.io/redis-adapter");
 const { createRedisClient } = require("./src/shared/redisClient");
+const { corsOrigin } = require("./src/config/corsOrigin");
 
 const app = require('./src/app');
 const connectDB = require('./src/config/db');
@@ -17,7 +18,8 @@ const server = http.createServer(app);
 //attach socket.io
 const io = require('socket.io')(server, {
     cors : {
-        origin : '*'
+        origin: corsOrigin,
+        credentials: true,
     }
 });
 

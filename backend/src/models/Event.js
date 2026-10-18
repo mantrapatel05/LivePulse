@@ -19,7 +19,7 @@ const EventSchema = new mongoose.Schema({
   eventType: {
     type: String,
     required: true,
-    enum: ["page_view", "click", "error", "rage_click", "custom", "time_on_page", "scroll_depth"],
+    enum: ["page_view", "click", "error", "rage_click", "custom", "time_on_page", "scroll_depth", "identify"],
   },
   url: {
     type: String,

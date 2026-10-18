@@ -20,7 +20,7 @@ const eventsRejected = new client.Counter({
 const rateLimited = new client.Counter({
   name: "livepulse_rate_limited_total",
   help: "Requests rejected by the rate limiter",
-  labelNames: ["scope"], // "api_key" | "ip"
+  labelNames: ["scope"], // ingest: "api_key" | "ip"; dashboard: "dashboard_user" | "dashboard_ip"
   registers: [register],
 });
 

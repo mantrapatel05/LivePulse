@@ -29,6 +29,13 @@ function getRedisClient() {
     return sharedClient;
 }
 
+async function closeRedisClient() {
+    if (!sharedClient) return;
+    const client = sharedClient;
+    sharedClient = null;
+    await client.quit();
+}
+
 async function  checkRedisReady(timeoutMs = 1500) {
     try {
         const client = getRedisClient();
@@ -45,6 +52,7 @@ async function  checkRedisReady(timeoutMs = 1500) {
 module.exports = {
   createRedisClient,
   getRedisClient,
+  closeRedisClient,
   checkRedisReady,
   REDIS_URL,
 };

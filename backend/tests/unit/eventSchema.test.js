@@ -50,6 +50,12 @@ describe("validateEvent", () => {
     expect(event.eventId).toBe("fixed-id-1");
   });
 
+  it("preserves identify as a known event type for the Mongo event model", () => {
+    const { ok, event } = validateEvent({ ...good, eventType: "identify" }, 0);
+    expect(ok).toBe(true);
+    expect(event.eventType).toBe("identify");
+  });
+
   it("rejects missing sessionId / eventType / url", () => {
     expect(validateEvent({ ...good, sessionId: "" }, 0).ok).toBe(false);
     expect(validateEvent({ ...good, eventType: "" }, 0).ok).toBe(false);

@@ -4,6 +4,7 @@ const {
   buildTopPagesQuery,
   buildEventBreakdownQuery,
   buildErrorClustersQuery,
+  buildErrorClustersRangeQuery,
   buildHistoricalSessionsQuery,
   buildSessionSummaryQuery,
   buildSessionTimelineEventsQuery,
@@ -72,6 +73,15 @@ describe("analyticsQueries builders", () => {
     expect(query_params.limit).toBe(20);
   });
 
+  it("errorClusters range: filters raw errors to the exact requested interval", () => {
+    const { query, query_params } = buildErrorClustersRangeQuery({ ...range, limit: 5 });
+    expect(query).toContain("FROM events_v2");
+    expect(query).toContain("event_type = 'error'");
+    expect(query).toContain("occurred_at >= {from:DateTime64(3)}");
+    expect(query).toContain("occurred_at < {to:DateTime64(3)}");
+    expect(query_params).toEqual({ ...range, limit: 5 });
+  });
+
   it("historicalSessions: filters session_summary_v2 by month partition then a precise HAVING on started_at", () => {
     const { query } = buildHistoricalSessionsQuery(range);
     expect(query).toContain("FROM session_summary_v2");
@@ -105,6 +115,7 @@ describe("analyticsQueries builders", () => {
       buildTopPagesQuery(range),
       buildEventBreakdownQuery(range),
       buildErrorClustersQuery({ projectId: "p1", from: range.from }),
+      buildErrorClustersRangeQuery(range),
       buildHistoricalSessionsQuery(range),
       buildSessionSummaryQuery({ projectId: "p1", sessionId: "s1" }),
       buildSessionTimelineEventsQuery({

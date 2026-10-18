@@ -107,6 +107,33 @@ function buildErrorClustersQuery({ projectId, from, limit = 20 }) {
   };
 }
 
+// The monthly error-cluster MV cannot answer arbitrary dashboard date ranges
+// accurately. Query the partitioned event table for an exact requested range.
+function buildErrorClustersRangeQuery({ projectId, from, to, limit = 20 }) {
+  return {
+    query: `
+      SELECT
+        replaceRegexpAll(
+          replaceRegexpAll(JSONExtractString(properties, 'message'), '0x[0-9a-fA-F]+|[0-9]+', '#'),
+          '''[^'']*''|"[^"]*"', '<val>'
+        ) AS signature,
+        any(JSONExtractString(properties, 'message')) AS message,
+        count() AS occurrences,
+        uniqExact(session_id) AS affected_sessions,
+        max(occurred_at) AS last_seen
+      FROM events_v2
+      WHERE project_id = {projectId:String}
+        AND event_type = 'error'
+        AND occurred_at >= {from:DateTime64(3)}
+        AND occurred_at < {to:DateTime64(3)}
+      GROUP BY signature
+      ORDER BY last_seen DESC
+      LIMIT {limit:UInt32}
+    `,
+    query_params: { projectId, from, to, limit },
+  };
+}
+
 function buildHistoricalSessionsQuery({ projectId, from, to, limit = 100 }) {
   return {
     query: `
@@ -187,6 +214,7 @@ module.exports = {
   buildTopPagesQuery,
   buildEventBreakdownQuery,
   buildErrorClustersQuery,
+  buildErrorClustersRangeQuery,
   buildHistoricalSessionsQuery,
   buildSessionSummaryQuery,
   buildSessionTimelineEventsQuery,

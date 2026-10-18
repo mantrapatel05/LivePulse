@@ -155,7 +155,7 @@ describe("batch envelope + transport", () => {
     expect(custom.sessionId).toBeTruthy();
   });
 
-  it("uses sendBeacon (not fetch) for a sync flush, e.g. on page hide", async () => {
+  it("uses keepalive fetch with the API key header for sync flushes, never a query parameter", async () => {
     const LivePulse = await loadSdk();
     LivePulse.init({ apiKey: "lp_test", endpoint: "http://api.test" });
     LivePulse.track("custom", {});
@@ -166,7 +166,17 @@ describe("batch envelope + transport", () => {
     // directly via the public surface instead (beforeunload triggers it):
     window.dispatchEvent(new Event("beforeunload"));
 
-    expect(navigator.sendBeacon).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalled();
+    const [url, init] = fetchMock.mock.calls.at(-1);
+    expect(url).toBe("http://api.test/api/v2/collect");
+    expect(url).not.toContain("key=");
+    expect(init.keepalive).toBe(true);
+    expect(init.headers["x-api-key"]).toBe("lp_test");
+    expect(navigator.sendBeacon).not.toHaveBeenCalled();
+    for (const [calledUrl, calledInit] of fetchMock.mock.calls) {
+      expect(calledUrl).not.toContain("key=");
+      expect(calledInit.headers["x-api-key"]).toBe("lp_test");
+    }
   });
 });
 

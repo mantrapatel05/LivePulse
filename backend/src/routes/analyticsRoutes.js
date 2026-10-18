@@ -11,8 +11,9 @@ const {
 } = require("../controllers/analyticsController");
 const { requireDashboardAuth } = require("../middleware/supabaseAuth");
 const { requireProjectOwnership } = require("../middleware/projectOwnership");
+const { dashboardRateLimit } = require("../middleware/dashboardRateLimit");
 
-router.use(requireDashboardAuth);
+router.use(requireDashboardAuth, dashboardRateLimit);
 router.use('/:projectId', requireProjectOwnership);
 
 router.get("/:projectId/overview", getOverview);
