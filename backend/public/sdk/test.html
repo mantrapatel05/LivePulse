@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LivePulse SDK - Live Test Bench</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2129; --line:#2a3038;
+    --text:#e6edf3; --dim:#8b949e; --acc:#ff3b3b; --ok:#3fb950; --warn:#d29922; --info:#58a6ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 "Segoe UI",system-ui,sans-serif;}
+  header{padding:22px 28px 10px;}
+  h1{margin:0;font-size:22px;letter-spacing:.3px}
+  .sub{color:var(--dim);margin-top:4px;font-size:13px}
+  .wrap{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:20px;padding:16px 28px 30px;align-items:start}
+  .col{min-width:0}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px}
+  h2{margin:0 0 4px;font-size:15px}
+  h2 .tag{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--acc);border:1px solid #5c1f1f;background:#2a1414;padding:2px 7px;border-radius:99px;vertical-align:2px;margin-left:8px}
+  p.note{margin:2px 0 12px;color:var(--dim);font-size:12.5px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  button.btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--text);
+    border-radius:9px;padding:11px 13px;text-align:left;cursor:pointer;font-size:13.5px;transition:border-color .15s, background .15s}
+  button.btn:hover{border-color:#4a5361;background:#232a33}
+  button.btn:active{transform:translateY(1px)}
+  .btn b{display:block;font-weight:600}
+  .btn small{display:block;color:var(--dim);font-size:11.5px;margin-top:2px;line-height:1.35}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;font-size:12px;font-variant-numeric:tabular-nums}
+  .chip{background:var(--panel2);border:1px solid var(--line);border-radius:99px;padding:5px 11px;color:var(--dim)}
+  .chip b{color:var(--text);font-weight:600;word-break:break-all}
+  .chip .dot{display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--warn);margin-right:6px}
+  .dot.ok{background:var(--ok)} .dot.off{background:#555}
+  #wire{height:340px;overflow:auto;background:#0a0e14;border:1px solid var(--line);border-radius:9px;padding:9px 12px;
+    font:.92em/1.6 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+  .ln{color:var(--dim)} .ln b{color:var(--text);font-weight:600}
+  .ln .n{color:var(--info)} .ln .e{color:var(--acc)} .ln .g{color:var(--ok)} .ln .y{color:var(--warn)}
+  .ln time{color:#5b626c;margin-right:8px}
+  .spacer{height:1500px;border-left:2px dashed #2a3038;margin:26px 0 0 28px;padding-top:10px;color:var(--dim);font-size:12px}
+  .pricetag{margin-top:6px;display:inline-block;background:#20262e;border:1px solid var(--line);border-radius:8px;padding:8px 12px;color:#a9b6c3;font-size:12px}
+  footer{padding:0 28px 26px;color:var(--dim);font-size:12px}
+  a{color:var(--info)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>LivePulse SDK &mdash; Live Test Bench</h1>
+  <div class="sub">This page embeds <b>/sdk/livepulse.js</b> (the real built SDK), initialized against this origin with the seeded local test key.
+  Every click anywhere on this page is itself auto-tracked &mdash; the page is the dataset.</div>
+</header>
+
+<div class="wrap">
+  <div class="col">
+
+    <section>
+      <h2>Status board</h2>
+      <p class="note">Pulled 2x per second straight from the live SDK instance.</p>
+      <div class="chips" id="status">
+        <span class="chip">session <b id="st-sid">...</b></span>
+        <span class="chip">consent <b id="st-consent">...</b></span>
+        <span class="chip">queue (persisted) <b id="st-q">0</b></span>
+        <span class="chip" id="st-dnt-chip">DNT <b>checking...</b></span>
+        <span class="chip">route <b id="st-route">/sdk/test.html</b></span>
+      </div>
+    </section>
+
+    <section>
+      <h2>1 &mdash; Custom events <span class="tag">track()</span></h2>
+      <p class="note">Arbitrary names are safe &mdash; the server coerces anything unknown into <b>custom</b> (schema v2, validated in <code>eventSchema.js</code>). The 250-event burst exercises the in-memory queue (flush every 20), the 60&#8202;KB chunker, and the bounded localStorage retry queue (200 max).</p>
+      <div class="grid">
+        <button class="btn" id="b-custom"><b>Track a custom event</b><small>LivePulse.track("signup_started", {plan:"pro"})</small></button>
+        <button class="btn" id="b-funnel"><b>Fire a 3-step funnel</b><small>view_pricing &rarr; click_cta &rarr; start_trial, 400ms apart</small></button>
+        <button class="btn" id="b-identify"><b>Track identify</b><small>track("identify", {planName:"pro", accountId:"acct_9f1"})</small></button>
+        <button class="btn" id="b-stress"><b>Burst: 250 events at once</b><small>shows queueing, chunking, and a 202 accepted count</small></button>
+        <button class="btn" id="b-flush"><b>Flush queue now</b><small>LivePulse.flush() &mdash; otherwise auto-flush every 5s</small></button>
+        <button class="btn" id="b-reset"><b>Reset session</b><small>LivePulse.reset() &mdash; new sessionId (with consent required, re-shows the banner)</small></button>
+      </div>
+    </section>
+
+    <section>
+      <h2>2 &mdash; Auto-tracked behaviors <span class="tag">observe side effects</span></h2>
+      <p class="note">These buttons cause the behavior; the SDK's own listeners do the tracking. No track() calls needed.</p>
+      <div class="grid">
+        <button class="btn" id="b-error"><b>Throw a real JS error</b><small>window "error" handler &rarr; event "error" + immediate flush</small></button>
+        <button class="btn" id="b-reject"><b>Unhandled promise rejection</b><small>"unhandledrejection" &rarr; event "error" type=promise</small></button>
+        <button class="btn" id="b-rage"><b>Rage-click simulation</b><small>3 real clicks, same 30px radius, under 500ms &rarr; "rage_click"</small></button>
+        <button class="btn" id="b-spa"><b>SPA route change</b><small>history.pushState &rarr; automatic "page_view"</small></button>
+        <button class="btn" id="b-scroll"><b>Scroll to bottom</b><small>"scroll_depth" fires once per threshold: 25 / 50 / 75 / 100%</small></button>
+        <button class="btn" id="b-pii"><b>PII redaction probe</b><small>sends email/phone keys + an innocent "note" value</small></button>
+      </div>
+    </section>
+
+    <section>
+      <h2>3 &mdash; Consent gate <span class="tag">opt-in contract</span></h2>
+      <p class="note" id="consent-note">Consent is currently <b>not required</b> (V1-compatible, ungated). To exercise the V2 gate, this page re-initializes with <code>?consent=required</code>: the SDK blocks all event building until you accept/decline, Do-Not-Track forces a silent deny, and denial drops the queue.</p>
+      <div class="grid">
+        <button class="btn" id="b-consent"><b>Enable consent gate</b><small>reload with ?consent=required &rarr; SDK shows its own banner</small></button>
+      </div>
+    </section>
+
+    <div class="spacer">
+      Scroll-depth test zone &mdash; 1500px of nothing. Click "Scroll to bottom" and watch scroll_depth events land at 25/50/75/100.
+      <div class="pricetag">pricing section (viewport never actually sees the bottom of this page without scrolling)</div>
+    </div>
+
+  </div>
+
+  <div class="col">
+    <section>
+      <h2>Wire log <span class="tag">POST /api/v2/collect</span></h2>
+      <p class="note">Real HTTP activity, mirrored from <code>window.fetch</code>: each line is one batch &mdash; event count, first event type, and the server's own 202 counts (accepted / rejected / duplicates). Redaction probe results are visible here too.</p>
+      <div id="wire"><div class="ln">waiting for traffic...</div></div>
+    </section>
+
+    <section>
+      <h2>Expected server-side projection</h2>
+      <p class="note">What each button produces in the analytics data store (Mongo/Redis pipeline, or ClickHouse after cutover):</p>
+      <div id="wire" style="height:auto;padding:10px 14px">
+        <div class="ln"><span class="n">page_view</span> &mdash; auto on load + on every SPA route change</div>
+        <div class="ln"><span class="n">click</span> &mdash; literally any click here, with captured element like <b>button#b-custom "Track..."</b> and your clientX/Y</div>
+        <div class="ln"><span class="n">rage_click</span> &mdash; after the simulation button's click storm</div>
+        <div class="ln"><span class="n">scroll_depth</span> &mdash; threshold reached while scrolling the spacer</div>
+        <div class="ln"><span class="n">error</span> &mdash; from throw / unhandled rejection</div>
+        <div class="ln"><span class="n">custom</span> &mdash; funnel + stress + anything unknown name</div>
+        <div class="ln"><span class="n">identify</span> &mdash; plan/account tags</div>
+        <div class="ln"><span class="n">time_on_page</span> &mdash; fire when you hide the tab or close it</div>
+        <div class="ln" style="margin-top:6px">Plus: <span class="n">active session heartbeat</span> in Redis (live "who is on now" in the dashboard), <span class="n">chat via socket.io</span> if you open the floating badge bottom-right.</div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<footer>
+  Real-time spot check: dashboard Control Room (frontend on :8080 or :5173) should show this session under <b>Live sessions</b> while the tab is open.
+  The local test project is <b>LivePulse Test Project</b> &mdash; seeded via <code>scripts/seedTestProject.js</code>.
+</footer>
+
+<script src="/sdk/livepulse.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  /* ---------------------------------------------------------- *
+   * init the real SDK exactly like a customer's site would
+   * ---------------------------------------------------------- */
+  var qs = new URLSearchParams(window.location.search);
+  var consentRequired = qs.get("consent") === "required";
+  var cfg = {
+    apiKey: "lp_test_local_key_123",   // seeded by backend/scripts/seedTestProject.js
+    endpoint: window.location.origin,  // http://localhost:5000
+    chat: true,                        // floating chat widget, socket connects on first open
+  };
+  if (consentRequired) cfg.consent = "pending";
+  LivePulse.init(cfg);
+
+  /* ---------------------------------------------------------- *
+   * wire log: mirror every batch the SDK actually posts, with
+   * the server's real counts. The SDK discards these responses,
+   * the demo shows them.
+   * ---------------------------------------------------------- */
+  var wire = document.getElementById("wire");
+  var origFetch = window.fetch;
+  window.fetch = function (input, init) {
+    var url = typeof input === "string" ? input : (input && input.url) || "";
+    var isCollect = url.indexOf("/api/v2/collect") !== -1;
+    var parsed = null;
+    if (isCollect && init && init.body) {
+      try {
+        var env = JSON.parse(init.body);
+        var first = (env.events && env.events[0]) || {};
+        parsed = { n: env.events.length, type: first.eventType || "?", consent: first.consent, redacted: [] };
+        if (env.events[0] && env.events[0].properties) {
+          var pk = [];
+          for (var k in env.events[0].properties) {
+            if (env.events[0].properties[k] === "[redacted]") pk.push(k);
+          }
+          parsed.redacted = pk;
+        }
+      } catch (e) { parsed = null; }
+    }
+    return origFetch.apply(this, arguments).then(function (res) {
+      if (!isCollect) return res;
+      var cloned = res.clone();
+      cloned.json().then(function (j) {
+        log(res.status, parsed, j);
+      }).catch(function () {
+        log(res.status, parsed, null);
+      });
+      return res;
+    }, function (err) {
+      if (isCollect) log(0, parsed, null);
+      throw err;
+    });
+  };
+
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function log(status, parsed, j) {
+    var t = new Date().toISOString().slice(11, 23);
+    var line = document.createElement("div");
+    line.className = "ln";
+    var cls = status >= 200 && status < 300 ? "g" : "e";
+    var counts = "";
+    if (j && typeof j.accepted === "number") {
+      counts = ' <span class="n">accepted ' + j.accepted + "</span>" +
+        (j.rejected ? ' <span class="y">rejected ' + j.rejected + "</span>" : "") +
+        (j.duplicates ? ' <span class="y">dupes ' + j.duplicates + "</span>" : "");
+    }
+    var sent = "";
+    if (parsed) {
+      sent = "  [" + parsed.n + " ev, first=" + parsed.type + (parsed.redacted && parsed.redacted.length
+        ? ", redacted: " + parsed.redacted.join(",") : "") + "]";
+    }
+    line.innerHTML = "<time>" + esc(t) + '</time> <span class="' + cls + '">POST ' + status + "</span>" + counts +
+      (sent ? ' <span style="color:#8b949e">' + esc(sent) + "</span>" : "");
+    var empty = wire.querySelector("div");
+    if (empty && empty.textContent.trim() === "waiting for traffic...") empty.remove();
+    wire.insertBefore(line, wire.firstChild);
+    while (wire.children.length > 40) wire.removeChild(wire.lastChild);
+  }
+
+  /* ---------------------------------------------------------- *
+   * status board
+   * ---------------------------------------------------------- */
+  var sidEl = document.getElementById("st-sid");
+  var consentEl = document.getElementById("st-consent");
+  var qEl = document.getElementById("st-q");
+  var dntChip = document.getElementById("st-dnt-chip");
+  var routeEl = document.getElementById("st-route");
+
+  function tick() {
+    sidEl.textContent = LivePulse.getSessionId();
+    consentEl.textContent = LivePulse.getConsentState();
+    var q = [];
+    try {
+      q = JSON.parse(localStorage.getItem("__lp_retry_queue_v2") || "[]");
+    } catch (e) { q = []; }
+    qEl.textContent = q.length;
+    var dnt = navigator.doNotTrack || window.doNotTrack;
+    var denied = dnt === "1" || dnt === "yes";
+    // rebuild the chip's content only - the chip element itself stays in place
+    dntChip.innerHTML = "DNT <b>" + (denied
+      ? '<span class="dot"></span>ON - tracking suppressed'
+      : '<span class="dot ok"></span>off') + "</b>";
+    dntChip.title = denied ? "Do Not Track is ON - SDK silently stops all tracking" : "Do Not Track is off";
+    routeEl.textContent = window.location.pathname + "?" + (window.location.search ? window.location.search.slice(1) : "");
+  }
+  setInterval(tick, 500);
+  tick();
+
+  /* ---------------------------------------------------------- *
+   * buttons
+   * ---------------------------------------------------------- */
+  document.getElementById("b-custom").addEventListener("click", function () {
+    LivePulse.track("signup_started", { plan: "pro", surface: "test-bench" });
+  });
+
+  document.getElementById("b-funnel").addEventListener("click", function () {
+    var steps = [
+      ["view_pricing", { section: "pricing" }],
+      ["click_cta", { cta: "start-trial", section: "pricing" }],
+      ["start_trial", { trialDays: 14 }],
+    ];
+    steps.forEach(function (s, i) {
+      setTimeout(function () { LivePulse.track(s[0], s[1]); }, i * 400);
+    });
+  });
+
+  document.getElementById("b-identify").addEventListener("click", function () {
+    LivePulse.track("identify", { planName: "pro", accountId: "acct_9f1", customerSince: "2026-01-04" });
+  });
+
+  document.getElementById("b-stress").addEventListener("click", function () {
+    for (var i = 0; i < 250; i++) {
+      LivePulse.track("bulk_probe_" + (i % 5), { seq: i, bench: true });
+    }
+  });
+
+  document.getElementById("b-flush").addEventListener("click", function () {
+    LivePulse.flush();
+  });
+
+  document.getElementById("b-reset").addEventListener("click", function () {
+    LivePulse.reset();
+  });
+
+  document.getElementById("b-error").addEventListener("click", function () {
+    setTimeout(function () {
+      // deliberate real error -> captured by the SDK's window error listener
+      var crash = null;
+      crash.runtime.purpose = "demo";
+    }, 0);
+  });
+
+  document.getElementById("b-reject").addEventListener("click", function () {
+    // deliberate unhandled rejection -> captured by the SDK's listener
+    Promise.reject(new Error("test bench: unhandled rejection probe"));
+  });
+
+  document.getElementById("b-rage").addEventListener("click", function () {
+    // dispatch on a NEUTRAL element (not this button!) - a click on the button
+    // itself would re-trigger this very listener and cascade forever.
+    var target = document.querySelector(".spacer");
+    var r = document.getElementById("b-rage").getBoundingClientRect();
+    var x = r.left + r.width / 2, y = r.top + r.height / 2;
+    [0, 130, 260].forEach(function (d) {
+      setTimeout(function () {
+        target.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y, view: window }));
+      }, d);
+    });
+  });
+
+  document.getElementById("b-spa").addEventListener("click", function () {
+    // bump only the query string (never the path) so a later reload still resolves this static file
+    var params = new URLSearchParams(window.location.search);
+    var n = (parseInt(params.get("spa") || "0", 10) || 0) + 1;
+    params.set("spa", String(n));
+    window.history.pushState({}, "", window.location.pathname + "?" + params.toString());
+  });
+
+  document.getElementById("b-scroll").addEventListener("click", function () {
+    // instant jump so all four thresholds (25/50/75/100) register on this pass
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "auto" });
+  });
+
+  document.getElementById("b-pii").addEventListener("click", function () {
+    // keys email/phone match the PII key pattern -> "[redacted]" at sanitize time.
+    // "note" is an innocent key whose VALUE contains PII -> the known remaining gap (values are not scanned).
+    LivePulse.track("contact_form", {
+      email: "visitor@example.com",
+      phone: "555-010-0199",
+      note: "you can text me at paranoid@example.com any time",
+      plan: "pro",
+    });
+  });
+
+  document.getElementById("b-consent").addEventListener("click", function () {
+    window.location.href = "/sdk/test.html?consent=required";
+  });
+
+  if (consentRequired) {
+    document.getElementById("b-consent").style.display = "none";
+    var cn = document.getElementById("consent-note");
+    cn.innerHTML = "Consent gate is <b>ON</b>: the SDK blocks all event building until you answer its banner " +
+      "(reset() re-asks after a deny). Your current state is shown in the board above.";
+  }
+
+  /* ---------------------------------------------------------- *
+   * auto-demo mode: ?autoplay=1 walks through every button like a
+   * visitor would, so the whole showcase can be verified end to
+   * end without a human present. The consent button is excluded
+   * because it navigates away.
+   * ---------------------------------------------------------- */
+  if (qs.get("autoplay") === "1") {
+    var seq = [
+      ["b-custom", 250], ["b-identify", 650],
+      ["b-pii", 650], ["b-rage", 500],
+      ["b-error", 500], ["b-reject", 500],
+      ["b-spa", 500], ["b-scroll", 500],
+      ["b-funnel", 1500], ["b-stress", 1500],
+      ["b-flush", 500], ["b-reset", 600],
+    ];
+    var delay = 1500;
+    seq.forEach(function (step) {
+      setTimeout(function () {
+        var b = document.getElementById(step[0]);
+        if (b) b.click();
+      }, delay);
+      delay += step[1];
+    });
+  }
+})();
+</script>
+</body>
+</html>

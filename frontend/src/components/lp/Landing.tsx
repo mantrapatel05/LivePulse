@@ -234,7 +234,10 @@ export function Landing() {
       if (e.key !== "Enter" || !input.value.trim()) return;
       const li = document.createElement("li");
       li.className = "me";
-      li.innerHTML = `${input.value}<small>you · just now</small>`;
+      li.append(document.createTextNode(input.value));
+      const timestamp = document.createElement("small");
+      timestamp.textContent = "you · just now";
+      li.appendChild(timestamp);
       log.appendChild(li);
       input.value = "";
       log.scrollTop = log.scrollHeight;

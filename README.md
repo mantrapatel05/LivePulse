@@ -48,7 +48,7 @@ Three processes: `api` (`node server.js`, HTTP + Socket.IO), `worker` (`node wor
 
 ## Prerequisites
 
-- **Node.js** >= 18 (Docker images use Node 22)
+- **Node.js** >= 18 (Docker images use Node 24)
 - **Docker + Compose** (recommended) — or local MongoDB 7, Redis 7, ClickHouse 24.8
 - **Supabase project** — JWT secret (legacy HS256 secret) + project URL + anon key
 
@@ -98,10 +98,11 @@ cd frontend
 npm run dev
 ```
 
-Then seed a project and open `test.html` (repo root) to verify events flow end-to-end.
+Then seed a project and open the interactive test bench: `http://localhost:5000/sdk/test.html` (source: `backend/public/sdk/test.html` — buttons for every SDK behavior, a wire log of every batch, and an `?autoplay=1` self-demo). `sdk/test.html` is the minimal one-tag smoke test. Excluded from production images via `backend/.dockerignore`.
 
 ```bash
 cd backend
+# Set ALLOW_TEST_SEED=true only after confirming MONGO_URI targets a disposable test database.
 npm run seed:test-project  # upserts 699d9becf25204ae69676baa / lp_test_local_key_123
 ```
 
@@ -160,7 +161,7 @@ Manual init (full control):
   });
 
   LivePulse.track('purchase', { plan: 'pro', amount: 49 });
-  LivePulse.flush();            // force-send (auto-flush every 5s / 20 events / on unload via sendBeacon)
+  LivePulse.flush();            // force-send (auto-flush every 5s / 20 events / on unload via keepalive fetch -- the API key never appears in any URL)
   LivePulse.consent('granted'); // or 'denied'
   LivePulse.reset();            // forget visitor: fresh session + cleared queue
 </script>
@@ -190,7 +191,7 @@ All dashboard routes require `Authorization: Bearer <Supabase JWT>` plus project
 | `GET /api/chat/:projectId/:sessionId/history` | JWT + owner | Last ≤200 messages, ascending |
 | `GET /health` · `GET /health/live` | none | `{status: "ok"}` |
 | `GET /health/ready` | none | `{mongo, redis, clickhouse, consumerGroup, streamBacklogHealthy}` · `200`/`503` |
-| `GET /metrics` | none | Prometheus exposition (`livepulse_events_*`, `livepulse_ingest_stage_ms`, `livepulse_stream_pending_count`, …) |
+| `GET /metrics` | none in dev · `Bearer METRICS_TOKEN` in prod (unset → deliberate `503`) | Prometheus exposition (`livepulse_events_*`, `livepulse_ingest_stage_ms`, `livepulse_stream_pending_count`, …) |
 | `GET /sdk/livepulse.js` | none | Minified SDK (5-min cache, CORS `*`) |
 
 Sockets: dashboards authenticate with the Supabase JWT and join `project:{id}` / `chat:{projectId}:{sessionId}`; visitors connect with `{apiKey, sessionId}` and are pinned to their own chat room. Events fan out as `live:event` (+ `new-event` V1 alias), sessions as `live:session` (+ `session-updated`), chat as `founder_message` / `user_reply`, health as `system:health` every 15 s.
@@ -250,7 +251,7 @@ Measured on a shared Windows/Docker host (same-box contention inflates absolutes
 
 | Layer | Technology |
 |---|---|
-| SDK | Vanilla JS (IIFE, zero dependencies), `fetch` + `sendBeacon`, `localStorage` retry queue |
+| SDK | Vanilla JS (IIFE, zero dependencies), `fetch` (keepalive for unload delivery), `localStorage` retry queue |
 | Backend | Express 5, Socket.IO 4 (+ Redis adapter), Mongoose 9, ioredis 5, `@clickhouse/client`, `geoip-lite`, Pino, prom-client |
 | Frontend | React 19, Vite 8, TanStack Router + Query, Supabase JS, socket.io-client, Framer Motion |
 | Auth | Supabase JWT (dashboard) + hashed API keys (ingest) |

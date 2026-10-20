@@ -3,3 +3,6 @@ npm-debug.log
 .env
 .env.*
 !.env.example
+
+# developer-only test bench: keep in git for future testing, never ship it
+public/sdk/test.html

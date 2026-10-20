@@ -29,6 +29,7 @@
     "geoip-lite": "^2.0.3",
     "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.3",
+    "jwks-rsa": "^4.1.0",
     "mongoose": "^9.2.1",
     "pino": "^10.3.1",
     "prom-client": "^15.1.3",

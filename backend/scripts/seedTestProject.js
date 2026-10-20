@@ -10,6 +10,12 @@ async function run() {
     if (!process.env.MONGO_URI) {
       throw new Error('MONGO_URI is missing in environment');
     }
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Refusing to seed a test project in production');
+    }
+    if (process.env.ALLOW_TEST_SEED !== 'true') {
+      throw new Error('Set ALLOW_TEST_SEED=true to confirm this is a disposable test database');
+    }
 
     await mongoose.connect(process.env.MONGO_URI);
 
