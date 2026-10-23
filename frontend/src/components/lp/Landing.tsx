@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { useAuth } from "../../lib/auth";
 import { API_URL } from "../../lib/config";
 import { BrandMark } from "./Brand";
+import { PipelineRun } from "./PipelineRun";
 
 /**
  * The hero monitor, world map and chat replay are clearly-labelled preview
@@ -63,8 +64,6 @@ export function Landing() {
     const dBpm = q("dBpm");
     const dPpm = q("dPpm");
     const dHpm = q("dHpm");
-    const navOnline = q("navOnline");
-    const footBpm = q("footBpm");
 
     timers.push(
       window.setInterval(() => {
@@ -74,7 +73,6 @@ export function Landing() {
         const bpm = 68 + Math.floor(Math.random() * 14);
         if (bpmEl) bpmEl.textContent = String(bpm);
         if (dBpm) dBpm.textContent = String(bpm);
-        if (footBpm) footBpm.textContent = String(bpm);
         if (rxEl) rxEl.textContent = (3 + Math.random() * 9).toFixed(1);
         if (dPpm) dPpm.textContent = String(28 + Math.floor(Math.random() * 20));
         if (dHpm) dHpm.textContent = String(10 + Math.floor(Math.random() * 12));
@@ -110,7 +108,6 @@ export function Landing() {
         .join("");
       const nowCount = q("nowCount");
       if (nowCount) nowCount.textContent = String(visitors.length);
-      if (navOnline) navOnline.textContent = String(200 + visitors.length);
     }
 
     /* ---------- world map dot grid + pings ---------- */
@@ -287,7 +284,7 @@ export function Landing() {
             <span className="wm-pulse">Pulse</span>
           </span>
           <span className="brand-status">
-            <i className="dot" /> online · <span id="navOnline">217</span>
+            <i className="dot" /> live preview
           </span>
         </a>
         <nav className="nav-links">
@@ -331,16 +328,16 @@ export function Landing() {
             </div>
             <ul className="stats">
               <li>
-                <b>~8KB</b>
-                <span>minified SDK</span>
+                <b>5.8 KB</b>
+                <span>SDK · gzipped</span>
               </li>
               <li>
-                <b>&lt;100ms</b>
-                <span>event to dashboard</span>
+                <b>5 sec</b>
+                <span>scheduled batch flush</span>
               </li>
               <li>
                 <b>0</b>
-                <span>cookies, ever</span>
+                <span>cookies set by the SDK</span>
               </li>
             </ul>
           </div>
@@ -420,9 +417,7 @@ export function Landing() {
                 <span>
                   RX <b id="rx">0</b> ev/s
                 </span>
-                <span>
-                  LAT <b>87ms</b>
-                </span>
+                <span>DEMO FEED</span>
                 <span className="rec">
                   <i /> PREVIEW
                 </span>
@@ -508,40 +503,12 @@ export function Landing() {
           <span className="band-num">02</span>
           <h2>The pipeline, drawn honestly.</h2>
           <p>
-            From <code>window</code> to your dashboard — no vendor magic, one clear path.
+            Live events move through a durable stream. Real-time activity branches to your
+            dashboard; ClickHouse powers analytics and MongoDB keeps operational records.
           </p>
         </div>
 
-        <div className="pipeline">
-          <div className="stage">
-            <span className="stage-tag">browser</span>
-            <b>SDK</b>
-            <i>batches events every ~5s, one script tag</i>
-          </div>
-          <div className="arrow">
-            <span />
-          </div>
-          <div className="stage">
-            <span className="stage-tag">backend</span>
-            <b>Collector</b>
-            <i>Node/Express · validates the api key · geo-enriches</i>
-          </div>
-          <div className="arrow">
-            <span />
-          </div>
-          <div className="stage-col">
-            <div className="stage hot">
-              <span className="stage-tag">&lt;100ms</span>
-              <b>Socket.IO</b>
-              <i>pushes straight to your dashboard, room-isolated per project</i>
-            </div>
-            <div className="stage cold">
-              <span className="stage-tag">durable</span>
-              <b>MongoDB</b>
-              <i>events, sessions, chat — queryable, 30-day TTL</i>
-            </div>
-          </div>
-        </div>
+        <PipelineRun />
       </section>
 
       {/* ─────────────────────── DASHBOARD (preview) ─────────────────────── */}
@@ -707,9 +674,6 @@ export function Landing() {
         </span>
         <span>
           made by <span className="under">@mantrapatel05</span>
-        </span>
-        <span className="heart">
-          ♥ <span id="footBpm">72</span> bpm
         </span>
       </footer>
     </div>
