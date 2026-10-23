@@ -4,6 +4,7 @@ const Project = require('../src/models/Project');
 
 const TEST_PROJECT_ID = '699d9becf25204ae69676baa';
 const TEST_API_KEY = 'lp_test_local_key_123';
+const OWNER_ID = process.env.TEST_OWNER_ID;
 
 async function run() {
   try {
@@ -15,6 +16,9 @@ async function run() {
     }
     if (process.env.ALLOW_TEST_SEED !== 'true') {
       throw new Error('Set ALLOW_TEST_SEED=true to confirm this is a disposable test database');
+    }
+    if (!OWNER_ID) {
+      throw new Error('Set TEST_OWNER_ID=<your Supabase user UID>');
     }
 
     await mongoose.connect(process.env.MONGO_URI);
@@ -31,7 +35,7 @@ async function run() {
 
     if (existingById) {
       existingById.name = 'LivePulse Test Project';
-      existingById.supabaseUserId = 'local-test-user';
+      existingById.supabaseUserId = OWNER_ID;
       existingById.apiKey = TEST_API_KEY;
       project = await existingById.save();
     } else {
@@ -39,12 +43,13 @@ async function run() {
         _id: new mongoose.Types.ObjectId(TEST_PROJECT_ID),
         name: 'LivePulse Test Project',
         apiKey: TEST_API_KEY,
-        supabaseUserId: 'local-test-user'
+        supabaseUserId: OWNER_ID
       });
     }
 
     console.log('Test project ready');
     console.log('projectId:', String(project._id));
+    console.log('ownerId:', OWNER_ID);
     console.log('apiKey:', project.apiKey);
   } catch (error) {
     console.error('Failed to seed test project:', error.message);

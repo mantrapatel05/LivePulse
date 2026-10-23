@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const connectDB = require("../src/config/db");
 const Event = require("../src/models/Event");
 const Project = require("../src/models/Project");
+const ParityRun = require("../src/models/ParityRun");
 const { getClickhouseClient } = require("../src/shared/clickhouseClient");
 const { logger } = require("../src/shared/logger");
 
@@ -11,6 +12,15 @@ const PARITY_THRESHOLD_PCT = Number(process.env.PARITY_THRESHOLD_PCT || 0.5);
 function pctDiff(a, b) {
   if (a === 0 && b === 0) return 0;
   return (Math.abs(a - b) / Math.max(a, b, 1)) * 100;
+}
+
+async function persistRun(report) {
+  const day = new Date().toISOString().slice(0, 10);
+  await ParityRun.findOneAndUpdate(
+    { projectId: report.projectId, day },
+    { $set: { withinThreshold: report.withinThreshold, report, ranAt: new Date() } },
+    { upsert: true },
+  );
 }
 
 /**
@@ -86,6 +96,7 @@ async function run() {
   const reports = [];
   for (const project of projects) {
     const report = await checkProject(project._id, from, to);
+    await persistRun(report);
     reports.push(report);
     const flag = report.withinThreshold ? "OK" : "MISMATCH";
     logger.info(report, `[${flag}] parity check for project ${report.projectId}`);

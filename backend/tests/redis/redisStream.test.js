@@ -16,6 +16,24 @@ afterAll(async () => {
 });
 
 describe("redisStream against a real Redis", () => {
+  it("carries W3C trace context through the stream consumer read", async () => {
+    await stream.publishEvent(redis, {
+      projectId: "p1",
+      event: { i: 1 },
+      correlationId: "trace-test",
+      traceContext: {
+        traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+        tracestate: "vendor=value",
+      },
+    });
+
+    const [entry] = await stream.readBatch(redis, "trace-consumer", { count: 1, blockMs: 50 });
+    expect(entry.traceContext).toEqual({
+      traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+      tracestate: "vendor=value",
+    });
+  });
+
   it("publishes events and a consumer group reads them exactly once as 'new'", async () => {
     for (let i = 0; i < 3; i++) {
       await stream.publishEvent(redis, { projectId: "p1", event: { i }, correlationId: `c${i}` });

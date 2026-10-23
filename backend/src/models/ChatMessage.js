@@ -23,6 +23,10 @@ const ChatMessageSchema = new mongoose.Schema({
     trim: true,
     maxlength: 2000,
   },
+  clientMsgId: {
+    type: String,
+    maxlength: 64,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -31,5 +35,9 @@ const ChatMessageSchema = new mongoose.Schema({
 });
 
 ChatMessageSchema.index({ projectId: 1, sessionId: 1, createdAt: 1 });
+ChatMessageSchema.index(
+  { projectId: 1, sessionId: 1, sender: 1, clientMsgId: 1 },
+  { unique: true, partialFilterExpression: { clientMsgId: { $type: "string" } } },
+);
 
 module.exports = mongoose.model("ChatMessage", ChatMessageSchema);

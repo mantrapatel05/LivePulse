@@ -10,9 +10,18 @@
   var MAX_RETRY_MS = 60000;
   var MAX_PROPERTY_STRING_LENGTH = 500;
   var MAX_PROPERTY_DEPTH = 3;
-  var STORAGE_QUEUE_KEY = "__lp_retry_queue_v2";
+  var LEGACY_QUEUE_KEY = "__lp_retry_queue_v2"; // old shared key, adopted once then deleted
+  var Q_PREFIX = "__lp_q_"; // per-tab queue: __lp_q_<sessionId>
+  var HB_PREFIX = "__lp_hb_"; // heartbeat for the owning tab
+  var ORPHAN_AFTER_MS = 60000;
+  var MAX_EVENTS_PER_SESSION = 3000;
+  var BUCKET_MAX = 60;
+  var BUCKET_REFILL_PER_SEC = 5;
+  var ERROR_DEDUPE_MS = 10000;
+  var MIN_URGENT_FLUSH_MS = 2000;
   var STORAGE_SESSION_KEY = "__lp_sid";
   var PII_KEY_PATTERN = /(email|passw|ssn|social.?security|credit.?card|card.?number|cvv|phone|address|token|secret|auth|api.?key)/i;
+  var EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 
   var _apiKey = null;
   var _apiOrigin = null;
@@ -21,6 +30,14 @@
   var _userId = "anonymous";
   var _pageStartTime = Date.now();
   var _inflightQueue = [];
+  var _bucket = BUCKET_MAX;
+  var _bucketTs = Date.now();
+  var _sessionCount = 0;
+  var _recentErrors = {};
+  var _recentErrorCount = 0;
+  var _lastUrgentFlush = 0;
+  var _sending = {}; // eventId -> true while in flight
+  var _timeReported = false;
   var _flushTimer = null;
   var _retryTimer = null;
   var _retryDelay = BASE_RETRY_MS;
@@ -68,28 +85,51 @@
     return dnt === "1" || dnt === "yes";
   }
 
+  function touchHeartbeat() {
+    try {
+      localStorage.setItem(HB_PREFIX + _sessionId, String(Date.now()));
+    } catch (e) {}
+  }
+
   function loadPersistedQueue() {
     try {
-      var raw = localStorage.getItem(STORAGE_QUEUE_KEY);
+      var raw = localStorage.getItem(Q_PREFIX + _sessionId);
       return raw ? JSON.parse(raw) : [];
-    } catch (e) {
-      return [];
-    }
+    } catch (e) { return []; }
   }
 
   function savePersistedQueue(queue) {
     try {
-      // Bounded: drop the oldest entries rather than let a long outage grow
-      // this without limit. This is a deliberate, visible data-loss
-      // tradeoff (documented, not silent forever) -- an indefinitely
-      // growing localStorage queue is its own failure mode.
+      if (!queue.length) {
+        localStorage.removeItem(Q_PREFIX + _sessionId);
+        localStorage.removeItem(HB_PREFIX + _sessionId);
+        return;
+      }
       var bounded = queue.length > MAX_PERSISTED_QUEUE ? queue.slice(queue.length - MAX_PERSISTED_QUEUE) : queue;
-      localStorage.setItem(STORAGE_QUEUE_KEY, JSON.stringify(bounded));
-    } catch (e) {
-      // Storage full or unavailable (private browsing, quota) -- tracking
-      // degrades to best-effort in-memory only, which is the right
-      // fallback rather than throwing and breaking the host page.
-    }
+      localStorage.setItem(Q_PREFIX + _sessionId, JSON.stringify(bounded));
+      touchHeartbeat();
+    } catch (e) {}
+  }
+
+  function adoptOrphanedQueues() {
+    try {
+      var now = Date.now();
+      var mine = Q_PREFIX + _sessionId;
+      var keys = [];
+      for (var i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+      var adopted = [];
+      keys.forEach(function (k) {
+        if (!k) return;
+        var legacy = k === LEGACY_QUEUE_KEY;
+        if (!legacy && (k.indexOf(Q_PREFIX) !== 0 || k === mine)) return;
+        var sid = legacy ? "" : k.slice(Q_PREFIX.length);
+        if (!legacy && now - (Number(localStorage.getItem(HB_PREFIX + sid)) || 0) < ORPHAN_AFTER_MS) return;
+        try { adopted = adopted.concat(JSON.parse(localStorage.getItem(k) || "[]")); } catch (e) {}
+        localStorage.removeItem(k);
+        if (!legacy) localStorage.removeItem(HB_PREFIX + sid);
+      });
+      if (adopted.length) savePersistedQueue(loadPersistedQueue().concat(adopted));
+    } catch (e) {}
   }
 
   /* ---------------------------------------------------------------- *
@@ -98,7 +138,7 @@
    * ---------------------------------------------------------------- */
 
   function sanitizeScalar(value) {
-    if (typeof value === "string") return value.slice(0, MAX_PROPERTY_STRING_LENGTH);
+    if (typeof value === "string") return value.replace(EMAIL_RE, "[email]").slice(0, MAX_PROPERTY_STRING_LENGTH);
     if (typeof value === "number" || typeof value === "boolean" || value === null) return value;
     if (Array.isArray(value)) return value.slice(0, 20).map(sanitizeScalar);
     return String(value).slice(0, MAX_PROPERTY_STRING_LENGTH);
@@ -137,7 +177,7 @@
       var classes = el.className.trim().split(/\s+/).slice(0, 2).join(".");
       cls = classes ? "." + classes : "";
     }
-    var text = el.innerText ? el.innerText.trim().slice(0, 40) : "";
+    var text = el.innerText ? el.innerText.trim().replace(EMAIL_RE, "[email]").slice(0, 40) : "";
     return text ? tag + id + cls + ' "' + text + '"' : tag + id + cls;
   }
 
@@ -186,10 +226,37 @@
     };
   }
 
+  function allowEvent(eventType, options) {
+    if (_sessionCount >= MAX_EVENTS_PER_SESSION) return false;
+    var now = Date.now();
+    _bucket = Math.min(BUCKET_MAX, _bucket + ((now - _bucketTs) / 1000) * BUCKET_REFILL_PER_SEC);
+    _bucketTs = now;
+    if (eventType === "error") {
+      var p = (options && options.properties) || {};
+      var key = p.message + "|" + p.source + "|" + p.line + "|" + p.col;
+      var last = _recentErrors[key];
+      if (last && now - last < ERROR_DEDUPE_MS) return false;
+      if (_recentErrorCount > 50) { _recentErrors = {}; _recentErrorCount = 0; }
+      _recentErrors[key] = now;
+      _recentErrorCount++;
+    }
+    if (_bucket < 1) return false;
+    _bucket -= 1;
+    _sessionCount++;
+    return true;
+  }
+
   function enqueue(eventType, options) {
-    if (!_apiKey || !consentAllows()) return;
+    if (!_apiKey || !consentAllows() || !allowEvent(eventType, options)) return;
     _inflightQueue.push(buildEvent(eventType, options));
     if (_inflightQueue.length >= MAX_INFLIGHT_QUEUE) flush();
+  }
+
+  function urgentFlush() {
+    var now = Date.now();
+    if (now - _lastUrgentFlush < MIN_URGENT_FLUSH_MS) return;
+    _lastUrgentFlush = now;
+    flush();
   }
 
   /* ---------------------------------------------------------------- *
@@ -224,26 +291,19 @@
 
   function flush() {
     drainInflightIntoPersisted();
-    var queue = loadPersistedQueue();
+    var persisted = loadPersistedQueue();
+    if (!persisted.length) return;
+    touchHeartbeat();
+    var queue = persisted.filter(function (e) { return !_sending[e.eventId]; });
     if (!queue.length) return;
-
-    var chunks = chunkBySize(queue);
-    chunks.forEach(function (chunk) {
-      sendBatch(chunk);
-    });
+    chunkBySize(queue).forEach(function (chunk) { sendBatch(chunk); });
   }
 
-  function sendBatch(events) {
-    var envelope = {
-      schemaVersion: SCHEMA_VERSION,
-      sentAt: new Date().toISOString(),
-      events: events,
-    };
-    var body = JSON.stringify(envelope);
+  function unmark(events) { events.forEach(function (e) { delete _sending[e.eventId]; }); }
 
-    // Keepalive fetch preserves the API key header and lets the browser finish
-    // delivery after page teardown. Never put credentials in a URL: URLs are
-    // routinely recorded in proxy, analytics, and server logs.
+  function sendBatch(events) {
+    events.forEach(function (e) { _sending[e.eventId] = true; });
+    var body = JSON.stringify({ schemaVersion: SCHEMA_VERSION, sentAt: new Date().toISOString(), events: events });
     fetch(_endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": _apiKey },
@@ -253,9 +313,11 @@
       .then(function (res) {
         if (!res.ok) throw new Error("collector responded " + res.status);
         removeFromPersistedQueue(events);
-        _retryDelay = BASE_RETRY_MS; // success resets backoff
+        unmark(events);
+        _retryDelay = BASE_RETRY_MS;
       })
       .catch(function () {
+        unmark(events);
         scheduleRetry();
       });
   }
@@ -303,12 +365,15 @@
 
   function trackPageView() {
     _pageStartTime = Date.now();
+    _timeReported = false;
     enqueue("page_view", { properties: { title: document.title } });
   }
 
   function trackTimeOnPage() {
+    if (_timeReported) return;
     var seconds = Math.max(1, Math.round((Date.now() - _pageStartTime) / 1000));
     enqueue("time_on_page", { properties: { seconds: seconds, title: document.title } });
+    _timeReported = true;
   }
 
   function trackClicks() {
@@ -325,13 +390,13 @@
   function trackErrors() {
     window.addEventListener("error", function (e) {
       enqueue("error", { properties: { message: e.message, source: e.filename, line: e.lineno, col: e.colno } });
-      flush();
+      urgentFlush();
     });
     window.addEventListener("unhandledrejection", function (e) {
       enqueue("error", {
         properties: { message: e.reason ? String(e.reason) : "Unhandled Promise rejection", type: "promise" },
       });
-      flush();
+      urgentFlush();
     });
   }
 
@@ -356,7 +421,7 @@
           var dist = Math.sqrt(Math.pow(last.x - first.x, 2) + Math.pow(last.y - first.y, 2));
           if (dist <= RAGE_RADIUS_PX) {
             enqueue("rage_click", { element: sanitizeElement(e.target), properties: { x: e.clientX, y: e.clientY, clickCount: clickLog.length } });
-            flush();
+            urgentFlush();
             clickLog = [];
           }
         }
@@ -391,6 +456,7 @@
         flush();
       } else if (document.visibilityState === "visible") {
         _pageStartTime = Date.now();
+        _timeReported = false;
       }
     });
   }
@@ -414,6 +480,7 @@
   function startTracking() {
     if (_trackingStarted) return;
     _trackingStarted = true;
+    adoptOrphanedQueues();
 
     var track = _trackConfig || {};
     var all = track.all !== false;
@@ -570,6 +637,13 @@
       });
   }
 
+  function sendReply(text, id, attempt) {
+    _socket.timeout(5000).emit("user_reply", { message: text, clientMsgId: id }, function (err, res) {
+      if (err && attempt < 1) return sendReply(text, id, attempt + 1); // same id => server de-dupes
+      if (err || !res || !res.ok) appendChatMessage("founder", "Message failed to send -- try again.");
+    });
+  }
+
   function buildChatDom() {
     injectChatStyles();
     var root = document.createElement("div");
@@ -619,9 +693,7 @@
       var text = input.value.trim();
       if (!text || !_socket) return;
       appendChatMessage("user", text);
-      _socket.emit("user_reply", { message: text }, function (res) {
-        if (!res || !res.ok) appendChatMessage("founder", "Message failed to send -- try again.");
-      });
+      sendReply(text, generateId(), 0);
       input.value = "";
       send.disabled = true;
     });
@@ -710,6 +782,7 @@
       } catch (e) {}
       savePersistedQueue([]);
       _inflightQueue = [];
+      _sending = {}; _bucket = BUCKET_MAX; _bucketTs = Date.now(); _sessionCount = 0; _recentErrors = {}; _recentErrorCount = 0; _timeReported = false;
       _sessionId = getSessionId();
       if (_socket) {
         _socket.disconnect();

@@ -53,6 +53,21 @@ export type LiveEvent = {
   sessionId?: string;
 };
 
+/** V1 compatibility aliases the server still emits next to the canonical event. */
+const ALIAS_EVENTS = new Set(["new-event", "session-updated", "user_reply", "founder_message"]);
+const CONTROL_EVENTS = new Set([
+  "connect",
+  "disconnect",
+  "connect_error",
+  "joined",
+  "system:health",
+]);
+
+/** True if an incoming socket event should become a row in the "raw wire" panel. */
+export function shouldRenderInStream(name: string): boolean {
+  return !ALIAS_EVENTS.has(name) && !CONTROL_EVENTS.has(name);
+}
+
 let seq = 0;
 
 /** Turns any collector payload into one row the stream can render. */

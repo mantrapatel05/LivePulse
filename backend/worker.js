@@ -1,14 +1,20 @@
 require("dotenv").config();
+const { initializeTracing, linksFromTraceContexts, shutdownTracing, withSpan } = require("./src/shared/tracing");
+initializeTracing("livepulse-worker");
+
 const os = require("os");
 const { createRedisClient } = require("./src/shared/redisClient");
 const { readBatch, reclaimStale, ack, pendingCount } = require("./src/shared/redisStream");
 const { insertEvents, runMigrations } = require("./src/shared/clickhouseClient");
 const { claimClickhouseInsert, releaseClickhouseInsertClaim } = require("./src/shared/idempotency");
 const { logger, withCorrelation } = require("./src/shared/logger");
+const express = require("express");
+const { requireMetricsAuth } = require("./src/middleware/metricsAuth");
 let workerBatchSize = { observe: () => {} };
+let clickhouseInsertLatency = { startTimer: () => () => {} };
 let streamLag = { set: () => {} };
 try {
-  ({ workerBatchSize, streamLag } = require("./src/shared/metrics"));
+  ({ workerBatchSize, clickhouseInsertLatency, streamLag } = require("./src/shared/metrics"));
 } catch {}
 
 const CONSUMER_NAME = `${os.hostname()}-${process.pid}`;
@@ -53,6 +59,16 @@ function toClickhouseDateTime(value) {
 
 async function processBatch(entries, redis, log = logger) {
   if (!entries.length) return;
+  const links = linksFromTraceContexts(entries.map((entry) => entry.traceContext));
+  return withSpan(
+    "livepulse.worker.batch",
+    { "messaging.message.count": entries.length },
+    () => processBatchCore(entries, redis, log),
+    { links, root: links.length > 0 },
+  );
+}
+
+async function processBatchCore(entries, redis, log) {
   workerBatchSize.observe(entries.length);
 
   const badIds = entries.filter((e) => !e.event).map((e) => e.id);
@@ -74,8 +90,18 @@ async function processBatch(entries, redis, log = logger) {
   const rows = toInsert.map(toClickhouseRow);
 
   if (rows.length) {
+    const endInsert = clickhouseInsertLatency.startTimer();
     try {
-      await insertEvents(rows);
+      await withSpan(
+        "livepulse.clickhouse.insert",
+        {
+          "db.system": "clickhouse",
+          "db.operation.name": "insert",
+          "db.collection.name": "events_v2",
+          "db.batch.size": rows.length,
+        },
+        () => insertEvents(rows),
+      );
     } catch (err) {
       // Roll back, or the retry would skip these as "already inserted" and lose them.
       // Release by canonical event_id (same key claimed above), not the raw SDK id.
@@ -85,6 +111,8 @@ async function processBatch(entries, redis, log = logger) {
         ),
       );
       throw err;
+    } finally {
+      endInsert();
     }
   }
 
@@ -114,6 +142,7 @@ async function loop(redis) {
       if (fresh.length) {
         const correlationId = fresh[0]?.correlationId;
         await processBatch(fresh, redis, correlationId ? withCorrelation(correlationId) : log);
+        streamLag.set(await pendingCount(redis));
         continue; // immediately check for more — don't wait out the reclaim pass while busy
       }
 
@@ -135,6 +164,21 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function startWorkerMetricsServer() {
+  const { register } = require("./src/shared/metrics");
+  const app = express();
+  app.get("/metrics", requireMetricsAuth, async (_req, res) => {
+    res.set("Content-Type", register.contentType);
+    res.end(await register.metrics());
+  });
+  app.use((_req, res) => res.sendStatus(404));
+  const port = Number(process.env.WORKER_METRICS_PORT || 9464);
+  const host = process.env.WORKER_METRICS_HOST || "127.0.0.1";
+  return app.listen(port, host, () => {
+    logger.info({ host, port }, "worker metrics endpoint listening");
+  });
+}
+
 async function main() {
   logger.info({ consumer: CONSUMER_NAME }, "worker starting");
   // Deliberately no Mongo connection here: the worker only moves data
@@ -150,7 +194,12 @@ async function main() {
   }
 
   const redis = createRedisClient("worker");
+  const metricsServer = startWorkerMetricsServer();
   await loop(redis);
+  await Promise.all([
+    redis.quit(),
+    new Promise((resolve, reject) => metricsServer.close((error) => (error ? reject(error) : resolve()))),
+  ]);
 }
 
 process.on("SIGTERM", () => {
@@ -165,7 +214,7 @@ if (require.main === module) {
   main().catch((err) => {
     logger.error({ err }, "worker crashed");
     process.exit(1);
-  });
+  }).finally(() => shutdownTracing());
 }
 
-module.exports = { toClickhouseRow, toClickhouseDateTime, processBatch };
+module.exports = { toClickhouseRow, toClickhouseDateTime, processBatch, startWorkerMetricsServer };

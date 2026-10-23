@@ -51,6 +51,26 @@ groups:
           summary: "High rate of 429 rate limit rejections"
           description: "Rate limiter is rejecting {{ $value }} requests/sec. Possible client retry storm or API abuse."
 
+      - alert: LivePulseHighHttp5xxRate
+        expr: sum(rate(livepulse_http_requests_total{status_code=~"5.."}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: livepulse-api
+        annotations:
+          summary: "LivePulse API is returning many server errors"
+          description: "The API has returned more than one 5xx response per second for five minutes."
+
+      - alert: LivePulseHttpRequestLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(livepulse_http_request_duration_ms_bucket[5m]))) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: livepulse-api
+        annotations:
+          summary: "LivePulse HTTP request p95 latency exceeds 1s"
+          description: "The API request p95 has exceeded 1s for five minutes."
+
       - alert: LivePulseClickhouseInsertLatencyHigh
         expr: histogram_quantile(0.95, rate(livepulse_clickhouse_insert_latency_ms_bucket[5m])) > 1000
         for: 5m

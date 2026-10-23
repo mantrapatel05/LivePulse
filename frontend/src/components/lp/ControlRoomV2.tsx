@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { LPProject } from "../../lib/api";
 import { analyticsV2, presetToRange, type DateRangePreset } from "../../lib/apiV2";
 import { API_URL } from "../../lib/config";
-import { getDashboardSocket, normaliseEvent, type LiveEvent } from "../../lib/socket";
+import {
+  getDashboardSocket,
+  normaliseEvent,
+  shouldRenderInStream,
+  type LiveEvent,
+} from "../../lib/socket";
 import { clock, timeAgo, usePolling } from "../../lib/usePolling";
 import { Bars, Empty, Panel, Spark, Stat } from "./Panel";
 import { ChatDock } from "./ChatDock";
@@ -90,8 +95,7 @@ export function ControlRoomV2({ project }: { project: LPProject }) {
     const onDisconnect = () => setLive(false);
     const onHealth = (payload: HealthPush) => setLiveHealthPush(payload);
     const onAny = (name: string, payload: unknown) => {
-      if (["connect", "disconnect", "connect_error", "joined", "system:health"].includes(name))
-        return;
+      if (!shouldRenderInStream(name)) return;
       setStream((s) => [normaliseEvent(name, payload), ...s].slice(0, 120));
     };
 

@@ -15,6 +15,7 @@ try {
   ({ eventsAccepted, eventsRejected, ingestStage } = require("./metrics"));
 } catch {}
 const { logger } = require("./logger");
+const { currentTraceContext, withSpan } = require("./tracing");
 
 function summary(accepted, rejected, duplicates, correlationId, internalFailures = 0) {
   return { accepted, rejected: rejected.length, duplicates, errors: rejected, correlationId, internalFailures };
@@ -40,7 +41,16 @@ function summary(accepted, rejected, duplicates, correlationId, internalFailures
  *
  * Canonical ordering (parity contract): Mongo FIRST, then the stream.
  */
-async function ingestBatch({ project, rawEvents, req }) {
+function ingestBatch(options) {
+  const eventCount = Array.isArray(options.rawEvents) ? options.rawEvents.length : 0;
+  return withSpan(
+    "livepulse.ingest.batch",
+    { "livepulse.event.count": eventCount },
+    () => ingestBatchCore(options),
+  );
+}
+
+async function ingestBatchCore({ project, rawEvents, req }) {
   const redis = getRedisClient();
   const io = req.app.get("io");
   const correlationId = req.id || crypto.randomUUID();
@@ -105,7 +115,7 @@ async function ingestBatch({ project, rawEvents, req }) {
 
   // Redis round trip 2: every XADD + one touch per distinct session
   const pipeline = redis.pipeline();
-  fresh.forEach(({ event }) => queuePublish(pipeline, { projectId, event, correlationId }));
+  fresh.forEach(({ event }) => queuePublish(pipeline, { projectId, event, correlationId, traceContext: currentTraceContext() }));
   queueSessionTouches(pipeline, projectId, fresh.map((f) => f.event));
 
   end = ingestStage.startTimer({ stage: "publish" });
@@ -152,7 +162,7 @@ async function ingestSingle({ project, projectId, item, rejected, io, correlatio
       const written = await dualWriteMongo({ project, event: enriched, io });
       enriched.mongoEventId = `mongo:${String(written.event._id)}`;
     }
-    await publishEvent(redis, { projectId, event: enriched, correlationId });
+    await publishEvent(redis, { projectId, event: enriched, correlationId, traceContext: currentTraceContext() });
     await touchSession(redis, { projectId, sessionId: event.sessionId, url: event.url, userId: event.userId });
     emitLive(io, project._id, enriched);
     eventsAccepted.inc({ project_id: projectId });

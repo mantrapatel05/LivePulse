@@ -26,6 +26,7 @@ const ProjectSchema = new mongoose.Schema({
     enum : ["mongo","dual","clickhouse"],
     default : "dual",
   },
+  analyticsBackendSince: { type: Date },
   supabaseUserId: {
     type: String,
     required: true,

@@ -1,4 +1,5 @@
 const { getClickhouseClient } = require("./clickhouseClient");
+const { withSpan } = require("./tracing");
 let queryLatency;
 try {
   ({ queryLatency } = require("./metrics"));
@@ -201,8 +202,14 @@ async function runQuery({ query, query_params }, endpointLabel) {
   const client = getClickhouseClient();
   const end = queryLatency.startTimer({ endpoint: endpointLabel });
   try {
-    const result = await client.query({ query, query_params, format: "JSONEachRow" });
-    return await result.json();
+    return await withSpan(
+      "livepulse.clickhouse.query",
+      { "db.system": "clickhouse", "livepulse.analytics.endpoint": endpointLabel },
+      async () => {
+        const result = await client.query({ query, query_params, format: "JSONEachRow" });
+        return result.json();
+      },
+    );
   } finally {
     end();
   }

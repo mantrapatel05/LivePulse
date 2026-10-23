@@ -11,14 +11,22 @@ const collectRoutes = require("./routes/collectRoutes");
 const healthRoutes = require("./routes/healthRoutes");
 const analyticsV2Routes = require("./routes/analyticsV2Routes");
 const { register } = require("./shared/metrics");
-const { corsOrigin } = require("./config/corsOrigin");
+const { corsOrigin, publicCorsOptions } = require("./config/corsOrigin");
 const { requireMetricsAuth } = require("./middleware/metricsAuth");
 const { logger } = require("./shared/logger");
+const { startRequestSpan } = require("./shared/tracing");
 
 const app = express();
 
 app.set("trust proxy", 1);
-app.use(cors({ origin: corsOrigin, credentials: true }));
+const PUBLIC_PREFIXES = ["/sdk", "/api/events", "/api/v2/collect"];
+const publicCors = cors(publicCorsOptions);
+const dashboardCors = cors({ origin: corsOrigin, credentials: true });
+app.use((req, res, next) => {
+  const isPublic = PUBLIC_PREFIXES.some((p) => req.path === p || req.path.startsWith(p + "/"));
+  return (isPublic ? publicCors : dashboardCors)(req, res, next);
+});
+app.use(startRequestSpan);
 app.use(express.json());
 
 // The embeddable SDK is a public, static asset — same trust level as the

@@ -51,6 +51,9 @@ services:
       PUBLIC_BACKEND_URL: http://localhost:5000
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-local-dev-secret-change-me}
       NODE_ENV: development
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_TRACES_SAMPLE_RATE: ${OTEL_TRACES_SAMPLE_RATE:-0.1}
     depends_on:
       mongo: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -64,6 +67,10 @@ services:
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_DATABASE: default
       NODE_ENV: development
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_TRACES_SAMPLE_RATE: ${OTEL_TRACES_SAMPLE_RATE:-0.1}
+      WORKER_METRICS_HOST: ${WORKER_METRICS_HOST:-0.0.0.0}
     depends_on:
       redis: { condition: service_healthy }
       clickhouse: { condition: service_healthy }

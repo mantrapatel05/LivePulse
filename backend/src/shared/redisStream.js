@@ -1,4 +1,5 @@
 const { logger } = require('./logger');
+const { deadLettered } = require("./metrics");
 
 const STREAM_KEY = 'events:v2';
 const DEAD_LETTER_STREAM_KEY = "events:v2:dead";
@@ -7,13 +8,17 @@ const MAX_DELIVERY_ATTEMPTS = 5;
 const ATTEMPTS_HASH_KEY = "events:v2:attempts";
 
 //take an event,append it to the notebook and return the id of the event
-async function publishEvent(redis,{projectId,event,correlationId}){
-    const id = await redis.xadd(
-        STREAM_KEY,
-        "*",
+async function publishEvent(redis, { projectId, event, correlationId, traceContext }) {
+    const fields = [
         "projectId", String(projectId),
         "correlationId", correlationId || "",
         "payload", JSON.stringify(event),
+    ];
+    appendTraceContext(fields, traceContext);
+    const id = await redis.xadd(
+        STREAM_KEY,
+        "*",
+        ...fields,
     );
     return id;
 }
@@ -23,17 +28,23 @@ async function publishEvent(redis,{projectId,event,correlationId}){
  * Lets the caller batch N publishes + session touches into a single
  * round trip (see ingestPipeline.js).
  */
-function queuePublish(pipeline, { projectId, event, correlationId }) {
+function queuePublish(pipeline, { projectId, event, correlationId, traceContext }) {
+  const fields = [
+    "projectId", String(projectId),
+    "correlationId", correlationId || "",
+    "payload", JSON.stringify(event),
+  ];
+  appendTraceContext(fields, traceContext);
   pipeline.xadd(
     STREAM_KEY,
     "*",
-    "projectId",
-    String(projectId),
-    "correlationId",
-    correlationId || "",
-    "payload",
-    JSON.stringify(event),
+    ...fields,
   );
+}
+
+function appendTraceContext(fields, traceContext) {
+  if (traceContext?.traceparent) fields.push("traceparent", traceContext.traceparent);
+  if (traceContext?.tracestate) fields.push("tracestate", traceContext.tracestate);
 }
 
 async function ensureConsumerGroup(redis) {
@@ -60,7 +71,12 @@ function parseStreamEntries(raw) {
         } catch {
           event = null;
         }
-        return { id, projectId: obj.projectId, correlationId: obj.correlationId, event };
+        const entry = { id, projectId: obj.projectId, correlationId: obj.correlationId, event };
+        if (obj.traceparent) {
+          entry.traceContext = { traceparent: obj.traceparent };
+          if (obj.tracestate) entry.traceContext.tracestate = obj.tracestate;
+        }
+        return entry;
     });
 }
 
@@ -132,6 +148,7 @@ async function reclaimStale(redis, consumerName, { minIdleMs = 30000, count = 10
         redis,
         toDeadLetter.map((e) => e.id),
       );
+      deadLettered.inc(toDeadLetter.length);
       logger.warn(
         { count: toDeadLetter.length, ids: toDeadLetter.map((e) => e.id) },
         "moved stale entries to dead-letter stream after exhausting retries",

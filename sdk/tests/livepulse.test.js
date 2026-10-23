@@ -20,6 +20,15 @@ function loadSdk() {
   return window.LivePulse;
 }
 
+function sentEvents(LivePulse) {
+  const sid = LivePulse.getSessionId();
+  const seen = new Map();
+  for (const [, init] of fetchMock.mock.calls) {
+    for (const e of JSON.parse(init.body).events) if (e.sessionId === sid) seen.set(e.eventId, e);
+  }
+  return [...seen.values()];
+}
+
 beforeEach(() => {
   document.body.innerHTML = "";
   document.head.querySelectorAll("style, script[data-lp-socketio]").forEach((el) => el.remove());
@@ -107,7 +116,7 @@ describe("init() with consent: 'pending' -- V2 consent gate", () => {
     LivePulse.flush();
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(JSON.parse(localStorage.getItem("__lp_retry_queue_v2") || "[]")).toHaveLength(0);
+    expect(JSON.parse(localStorage.getItem("__lp_q_" + LivePulse.getSessionId()) || "[]")).toHaveLength(0);
   });
 
   it("clicking Accept on the banner grants consent", async () => {
@@ -216,7 +225,7 @@ describe("bounded local retry with backoff", () => {
     LivePulse.flush();
     await vi.advanceTimersByTimeAsync(0); // let the rejected fetch promise settle
 
-    const persisted = JSON.parse(localStorage.getItem("__lp_retry_queue_v2"));
+    const persisted = JSON.parse(localStorage.getItem("__lp_q_" + LivePulse.getSessionId()));
     expect(persisted.length).toBeGreaterThan(0);
 
     fetchMock.mockResolvedValue({ ok: true, status: 202 });
@@ -224,6 +233,75 @@ describe("bounded local retry with backoff", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+  });
+});
+
+describe("event caps", () => {
+  it("token bucket stops a runaway track() loop", async () => {
+    const LivePulse = await loadSdk();
+    LivePulse.init({ apiKey: "lp_test", endpoint: "http://api.test" });
+    for (let i = 0; i < 500; i++) LivePulse.track("custom", { i });
+    LivePulse.flush();
+    const n = sentEvents(LivePulse).length;
+    expect(n).toBeGreaterThan(10);
+    expect(n).toBeLessThanOrEqual(62);
+  });
+
+  it("dedupes an identical error fired repeatedly", async () => {
+    const LivePulse = await loadSdk();
+    LivePulse.init({ apiKey: "lp_test", endpoint: "http://api.test" });
+    for (let i = 0; i < 20; i++) {
+      window.dispatchEvent(new ErrorEvent("error", { message: "boom", filename: "a.js", lineno: 1, colno: 2 }));
+    }
+    LivePulse.flush();
+    expect(sentEvents(LivePulse).filter((e) => e.eventType === "error")).toHaveLength(1);
+  });
+});
+
+describe("per-tab retry queue", () => {
+  const evt = (id) => ({ eventId: id, sessionId: "dead-tab", eventType: "custom", url: "http://x/", properties: {} });
+
+  it("adopts a queue whose owning tab stopped heartbeating", async () => {
+    localStorage.setItem("__lp_q_dead-tab", JSON.stringify([evt("e1"), evt("e2")]));
+    localStorage.setItem("__lp_hb_dead-tab", String(Date.now() - 120000));
+    const LivePulse = await loadSdk();
+    LivePulse.init({ apiKey: "lp_test", endpoint: "http://api.test" });
+    LivePulse.flush();
+    const ids = fetchMock.mock.calls.flatMap(([, i]) => JSON.parse(i.body).events.map((e) => e.eventId));
+    expect(ids).toEqual(expect.arrayContaining(["e1", "e2"]));
+    expect(localStorage.getItem("__lp_q_dead-tab")).toBeNull();
+  });
+
+  it("leaves a live tab's queue alone", async () => {
+    localStorage.setItem("__lp_q_live-tab", JSON.stringify([evt("e9")]));
+    localStorage.setItem("__lp_hb_live-tab", String(Date.now()));
+    const LivePulse = await loadSdk();
+    LivePulse.init({ apiKey: "lp_test", endpoint: "http://api.test" });
+    LivePulse.flush();
+    const ids = fetchMock.mock.calls.flatMap(([, i]) => JSON.parse(i.body).events.map((e) => e.eventId));
+    expect(ids).not.toContain("e9");
+    expect(localStorage.getItem("__lp_q_live-tab")).not.toBeNull();
+  });
+});
+
+describe("client PII + time_on_page", () => {
+  it("masks emails in string properties", async () => {
+    const LivePulse = await loadSdk();
+    LivePulse.init({ apiKey: "lp_test", endpoint: "http://api.test" });
+    LivePulse.track("custom", { note: "mail me at a.b@corp.io please" });
+    LivePulse.flush();
+    const e = sentEvents(LivePulse).find((x) => x.eventType === "custom");
+    expect(JSON.stringify(e.properties)).not.toContain("@corp.io");
+  });
+
+  it("reports time_on_page once when hidden is followed by unload", async () => {
+    const LivePulse = await loadSdk();
+    LivePulse.init({ apiKey: "lp_test", endpoint: "http://api.test" });
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("beforeunload"));
+    expect(sentEvents(LivePulse).filter((e) => e.eventType === "time_on_page")).toHaveLength(1);
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
   });
 });
 

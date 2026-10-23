@@ -45,7 +45,7 @@ async function resetFixtureState(projectId) {
   // 1. Wipe Mongo state for this project.
   await Event.deleteMany({ projectId });
   await Session.deleteMany({ projectId });
-  await MigrationCheckpoint.deleteOne({ key: "backfill:clickhouse" });
+  await MigrationCheckpoint.deleteOne({ key: `backfill:clickhouse:${String(projectId)}` });
 
   // 2. Wipe ClickHouse rows for this project (async mutation -- wait for it).
   const ch = getClickhouseClient();

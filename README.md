@@ -1,5 +1,7 @@
 # LivePulse
 
+![CI](https://github.com/mantrapatel05/LivePulse/actions/workflows/ci.yml/badge.svg)
+
 Self-hosted, real-time web analytics. A lightweight browser SDK captures behavioral events, a Node API ingests them through Redis Streams, a standalone worker batches them into ClickHouse, and a React dashboard renders live sessions, analytics, error clusters, and founder-to-visitor chat.
 
 ## Features
@@ -8,7 +10,7 @@ Self-hosted, real-time web analytics. A lightweight browser SDK captures behavio
 - **Session intelligence** — live-now state in Redis (`active:{project}` / `session:{project}:{session}`, 5-min TTL) plus durable session aggregates in Mongo; entry/exit, engaged seconds, device/browser/geo.
 - **Error clustering** — ClickHouse `error_clusters_v2` materialized view groups by normalized signature with occurrences, affected sessions (HLL), and last seen.
 - **Founder-to-visitor chat** — per-session rooms (`chat:{projectId}:{sessionId}`), persisted in Mongo, live over sockets.
-- **Zero-dependency SDK** — single IIFE file, no build step for hosts; minified artifact ~12.5 KB served from the API itself (`GET /sdk/livepulse.js`).
+- **Zero-dependency SDK** — single IIFE file, no build step for hosts; 14,112 bytes minified / 5,849 bytes gzipped, served from the API itself (`GET /sdk/livepulse.js`).
 - **Consent + privacy** — DNT respected, opt-in banner mode, PII redaction client- and server-side, allowlist/redact-selector controls.
 - **Dual auth boundaries** — public `x-api-key` (write-only ingest) vs Supabase JWT `Authorization: Bearer` (dashboard reads). A leaked API key cannot read analytics.
 - **Hashed API keys** — stored as `SHA-256(pepper + key)` with a visible `lp_live_<prefix>`; plaintext shown once at create/rotate.
@@ -103,7 +105,7 @@ Then seed a project and open the interactive test bench: `http://localhost:5000/
 ```bash
 cd backend
 # Set ALLOW_TEST_SEED=true only after confirming MONGO_URI targets a disposable test database.
-npm run seed:test-project  # upserts 699d9becf25204ae69676baa / lp_test_local_key_123
+ALLOW_TEST_SEED=true TEST_OWNER_ID=<uid> npm run seed:test-project  # upserts 699d9becf25204ae69676baa / lp_test_local_key_123
 ```
 
 ## Configuration
@@ -118,10 +120,20 @@ npm run seed:test-project  # upserts 699d9becf25204ae69676baa / lp_test_local_ke
 | `CLICKHOUSE_URL` | Yes (worker/V2) | `http://localhost:8123` |
 | `CLICKHOUSE_DATABASE` | No | `default` |
 | `SUPABASE_JWT_SECRET` | Yes (dashboard) | legacy JWT secret from Supabase Dashboard → Project Settings → API |
-| `DASHBOARD_ORIGIN` | Yes (prod) | `https://your-dashboard` (dev allows any `localhost:*`) |
+| `DASHBOARD_ORIGIN` | Yes (prod) | `https://your-dashboard` (dashboard origin allowlist; dev also allows loopback origins) |
 | `PUBLIC_BACKEND_URL` | No | `http://localhost:5000` (used in embed snippet template) |
 | `API_KEY_PEPPER` | Yes (prod) | unset warns in production; salts stored key hashes |
 | `NODE_ENV` | No | `development` |
+
+### Environment
+
+- `RATE_LIMIT_PER_SESSION_PER_MIN` (default `120`)
+- `CHAT_VISITOR_LIMIT_PER_MIN` (default `20`)
+- `CHAT_FOUNDER_LIMIT_PER_MIN` (default `120`)
+- `OTEL_EXPORTER_OTLP_ENDPOINT` (optional; unset disables tracing; OTLP/HTTP endpoint)
+- `OTEL_TRACES_SAMPLE_RATE` (default `0.1`, between `0` and `1`)
+- `WORKER_METRICS_PORT` (default `9464`, internal worker metrics listener)
+- `WORKER_METRICS_HOST` (default `127.0.0.1`; use the container's private interface for network scraping)
 
 ### `frontend/.env`
 
@@ -167,11 +179,21 @@ Manual init (full control):
 </script>
 ```
 
-Transport contract: versioned envelope `{schemaVersion: 2, sentAt, events[]}` with per-event `{eventId, sessionId, userId, eventType, url, element, occurredAt, consent, properties, clientContext}`; size-bounded chunks (60 KB); bounded `localStorage` retry queue (200) with exponential backoff + jitter; non-2xx (including the collector's `503` on partial internal failure) is retried, idempotency claims make the retry safe. Auto-tracked: page views + SPA navigations, clicks (x/y), errors (immediate flush), rage clicks (≥3 clicks / 500 ms / 30 px), scroll depth (25/50/75/100), time on page (visibility + unload).
+Transport contract: versioned envelope `{schemaVersion: 2, sentAt, events[]}` with per-event `{eventId, sessionId, userId, eventType, url, element, occurredAt, consent, properties, clientContext}`; size-bounded chunks (60 KB); bounded `localStorage` retry queue (200) with exponential backoff + jitter; non-2xx (including the collector's `503` on partial internal failure) is retried, idempotency claims make the retry safe. Auto-tracked: page views + SPA navigations, clicks (x/y), errors, rage clicks (≥3 clicks / 500 ms / 30 px), scroll depth (25/50/75/100), time on page (visibility + unload). Errors and rage clicks trigger an immediate flush, throttled to one urgent flush per 2 s.
+
+## Known limitations
+
+- Dashboard reads still use Mongo for `dual` projects until cutover.
+- In-process rate limits use fixed windows.
+- The SDK flushes every 5 s or 20 events; errors and rage clicks flush immediately, throttled to one urgent flush per 2 s.
+- Browser `keepalive` fetches share an approximately 64 KB total in-flight budget, so a huge unload burst can lose events.
+- Value-level PII scrubbing is regex-based and best effort, not a guarantee.
 
 ## API reference
 
 All dashboard routes require `Authorization: Bearer <Supabase JWT>` plus project ownership; ingest routes require `x-api-key`.
+
+CORS: collector endpoints and visitor sockets accept any origin; they authenticate with API-key credentials and do not use cookies. Dashboard routes allow only origins listed in `DASHBOARD_ORIGIN` (plus loopback origins in development).
 
 | Method + path | Auth | Response |
 |---|---|---|
@@ -198,23 +220,27 @@ Sockets: dashboards authenticate with the Supabase JWT and join `project:{id}` /
 
 ## Analytics backends and cutover
 
-`Project.analyticsBackend`: `mongo` (V1-only) → `dual` (default: write both, read Mongo) → `clickhouse` (write stream only). Migration tooling:
+`Project.analyticsBackend`: `mongo` (V1-only) → `dual` (write both, read Mongo) → `clickhouse` (write stream only). Allowed moves are `mongo`→`dual`, `dual`→`mongo`, and `dual`→`clickhouse`; `clickhouse`→`dual` is the rollback path. Other transitions are rejected. Migration tooling:
 
 ```bash
 cd backend
 npm run migrate:clickhouse     # apply clickhouse/migrations/*.sql (sorted, idempotent)
 npm run seed:fixtures          # deterministic dual-mode fixtures (rerunnable, Redis-deduped)
-npm run backfill:clickhouse    # Mongo → ClickHouse in _id order, checkpointed, skips live rows
-npm run check:parity           # Mongo vs ClickHouse totals/sessions/errors, default ≤0.5% to pass
+npm run backfill:clickhouse -- <projectId>  # backfill one project; checkpointed, skips existing rows
+npm run check:parity           # Mongo vs ClickHouse totals/sessions/errors, default ≤0.5% to pass; run daily
 node scripts/setAnalyticsBackend.js <projectId> <mongo|dual|clickhouse>
+node scripts/setAnalyticsBackend.js <projectId> <target> --force  # bypass parity/backfill gate checks
 ```
 
-Current state: the ClickHouse write path (worker + MVs + pure-SQL builders in `src/shared/analyticsQueries.js`) is live; dashboard reads still use Mongo. Cutover is gated on backfill + 7-day parity.
+Before moving `dual`→`clickhouse`, that project's backfill checkpoint (`backfill:clickhouse:<projectId>`) must have `processedCount > 0`; the newest seven parity runs must all be within threshold, cover seven consecutive UTC days, and the newest run must be no more than one day old. Those runs must include nonzero Mongo event counts. `--force` bypasses these backfill/parity gate checks and should be used only for an explicitly accepted cutover risk; it does not permit an invalid state transition. Run `npm run check:parity <projectId>` daily while validating the migration. Moving `clickhouse`→`dual` restores dual writes; Mongo may be stale after clickhouse-only operation, so reconcile/backfill before relying on Mongo reads.
+
+Current state: the ClickHouse write path (worker + MVs + pure-SQL builders in `src/shared/analyticsQueries.js`) is live; dashboard reads still use Mongo until cutover.
 
 ## Observability
 
 - Structured logs: Pino JSON with correlation IDs (`withCorrelation`), per-stage ingest timing.
-- Metrics: `livepulse_ingest_stage_ms{stage=claim|publish|mongo}`, `livepulse_events_accepted/rejected_total`, `livepulse_rate_limited_total`, `livepulse_stream_pending_count`, `livepulse_worker_batch_size`, `livepulse_clickhouse_insert_latency_ms`, `livepulse_query_latency_ms`, `livepulse_socket_connections`.
+- Metrics: `livepulse_ingest_stage_ms{stage=claim|publish|mongo}`, `livepulse_events_accepted/rejected_total`, `livepulse_rate_limited_total`, `livepulse_stream_pending_count`, `livepulse_worker_batch_size`, `livepulse_clickhouse_insert_latency_ms`, `livepulse_query_latency_ms`, `livepulse_socket_connections`, `livepulse_http_requests_total`, and `livepulse_http_request_duration_ms`. Scrape the API at `/metrics` and the worker at its internal `WORKER_METRICS_PORT` (default `9464`); production scrapes must send the configured `METRICS_TOKEN`.
+- Tracing: optional OTLP/HTTP traces for API requests, ingestion, ClickHouse analytics queries, and worker inserts. Trace context crosses Redis Streams as W3C `traceparent`/`tracestate`; worker batch spans link to a bounded set of originating spans. Pino logs include trace and span IDs. No event payloads, URLs, query text, or credentials are added to span attributes. See `backend/ops/grafana/` and `backend/ops/prometheus.yml` for dashboard provisioning and scrape targets.
 - Alerts: `backend/ops/alerts.yml` covers stream backlog (>5k warn / >20k critical), DLQ rate, reject rate, 429 rate, ClickHouse/query p95.
 - TTLs: events 30 d (Mongo) / 90 d (ClickHouse `events_v2`), idempotency claims 24 h, API-key snapshots 60 s, live-now state 5 min.
 

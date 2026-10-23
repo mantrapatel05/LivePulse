@@ -3,6 +3,7 @@ const {
   validateEvent,
   sanitizeProperties,
   normalizeUrl,
+  scrubString,
   SCHEMA_VERSION,
 } = require("../../src/shared/eventSchema");
 const { ValidationError } = require("../../src/shared/errors");
@@ -119,5 +120,37 @@ describe("normalizeUrl", () => {
 
   it("falls back to a truncated raw string for an unparseable URL rather than throwing", () => {
     expect(() => normalizeUrl("not a url at all")).not.toThrow();
+  });
+});
+
+describe("value-level PII scrubbing", () => {
+  it("redacts emails in free text before truncation", () => {
+    expect(scrubString("contact john.doe+x@mail.example.com pls")).toBe("contact [email] pls");
+    const out = sanitizeProperties({ msg: "x".repeat(490) + " a@verylongdomain.example.com" });
+    expect(out.msg).not.toContain("@");
+  });
+
+  it("redacts Luhn-valid cards but not random digit runs", () => {
+    expect(scrubString("pay 4242 4242 4242 4242 now")).toBe("pay [card] now");
+    expect(scrubString("order 1234567890123")).toBe("order 1234567890123");
+  });
+
+  it("redacts JWT- and key-shaped strings", () => {
+    expect(scrubString("t=eyJhbGciOiJI.eyJzdWIiOiIx.abc123")).toContain("[jwt]");
+    expect(scrubString("k=lp_live_abcdef123456")).toContain("[key]");
+  });
+
+  it("scrubs query params by key and by value, keeps benign ones", () => {
+    const u = normalizeUrl("https://x.com/p?utm_source=tw&email=a%40b.com&ref=a@b.com&token=abc#h");
+    expect(u).toContain("utm_source=tw");
+    expect(u).not.toContain("a%40b.com");
+    expect(u).not.toContain("abc");
+    expect(u).not.toContain("#h");
+  });
+
+  it("scrubs emails inside the path and strips userinfo", () => {
+    const u = normalizeUrl("https://user:pw@x.com/users/jane@corp.io/profile");
+    expect(u).not.toContain("jane@corp.io");
+    expect(u).not.toContain("pw");
   });
 });

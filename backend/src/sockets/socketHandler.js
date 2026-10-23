@@ -6,6 +6,8 @@ const { getRedisClient, checkRedisReady } = require("../shared/redisClient");
 const { checkClickhouseReady } = require("../shared/clickhouseClient");
 const { pendingCount } = require("../shared/redisStream");
 const { logger } = require("../shared/logger");
+const { checkRateLimit } = require("../shared/rateLimiter");
+const { RateLimitError } = require("../shared/errors");
 let socketConnections = { inc: () => {}, dec: () => {} };
 try {
   ({ socketConnections } = require("../shared/metrics"));
@@ -13,6 +15,44 @@ try {
 
 const MAX_MESSAGE_LENGTH = 2000;
 const HEALTH_BROADCAST_MS = 15000;
+const VISITOR_CHAT_LIMIT = Number(process.env.CHAT_VISITOR_LIMIT_PER_MIN || 20);
+const FOUNDER_CHAT_LIMIT = Number(process.env.CHAT_FOUNDER_LIMIT_PER_MIN || 120);
+const CLIENT_MSG_ID_RE = /^[\w-]{8,64}$/;
+
+async function limitChat(redis, scope, key, limit) {
+  try {
+    await checkRateLimit(redis, { scope, key, limit, windowSeconds: 60 });
+  } catch (err) {
+    if (err instanceof RateLimitError) throw new Error("Too many messages — slow down.");
+    throw err;
+  }
+}
+
+async function saveChatOnce({ projectId, sessionId, sender, message, clientMsgId }) {
+  const id = typeof clientMsgId === "string" && CLIENT_MSG_ID_RE.test(clientMsgId) ? clientMsgId : undefined;
+  try {
+    const doc = await ChatMessage.create({
+      projectId,
+      sessionId,
+      sender,
+      message,
+      ...(id && { clientMsgId: id }),
+    });
+    return { doc, duplicate: false };
+  } catch (err) {
+    if (err && err.code === 11000 && id) {
+      const existing = await ChatMessage.findOne({ projectId, sessionId, sender, clientMsgId: id });
+      if (existing) return { doc: existing, duplicate: true };
+    }
+    throw err;
+  }
+}
+
+function cleanText(message) {
+  const text = String(message || "").trim().slice(0, MAX_MESSAGE_LENGTH);
+  if (!text) throw new Error("Message is empty");
+  return text;
+}
 
 /**
  * Two connection roles, decided during the handshake and never after:
@@ -70,10 +110,10 @@ module.exports = (io) => {
   io.on("connection", (socket) => {
     if (socket.data.role === "dashboard") {
       socketConnections.inc({ role: "dashboard" });
-      attachDashboardHandlers(io, socket);
+      attachDashboardHandlers(io, socket, redis);
     } else {
       socketConnections.inc({ role: "visitor" });
-      attachVisitorHandlers(io, socket);
+      attachVisitorHandlers(io, socket, redis);
     }
 
     socket.on("disconnect", () => {
@@ -84,7 +124,7 @@ module.exports = (io) => {
   startHealthBroadcast(io, redis);
 };
 
-function attachDashboardHandlers(io, socket) {
+function attachDashboardHandlers(io, socket, redis) {
   logger.info({ socketId: socket.id, userId: socket.data.user.id }, "dashboard socket connected");
 
   socket.on("join_project", async ({ projectId } = {}, ack) => {
@@ -111,23 +151,28 @@ function attachDashboardHandlers(io, socket) {
     socket.join(`chat:${projectId}:${sessionId}`);
   });
 
-  socket.on("send_chat", async ({ projectId, sessionId, message } = {}, ack) => {
+  socket.on("send_chat", async ({ projectId, sessionId, message, clientMsgId } = {}, ack) => {
     try {
       if (!socket.data.ownedProjectIds.has(String(projectId))) {
         throw new Error("Not authorized for this project");
       }
-      const text = String(message || "")
-        .trim()
-        .slice(0, MAX_MESSAGE_LENGTH);
-      if (!text) throw new Error("Message is empty");
+      const text = cleanText(message);
+      await limitChat(redis, "chat_founder", socket.data.user.id, FOUNDER_CHAT_LIMIT);
+      const { doc, duplicate } = await saveChatOnce({
+        projectId,
+        sessionId,
+        sender: "founder",
+        message: text,
+        clientMsgId,
+      });
+      const payload = { sessionId, projectId, message: text, sender: "founder", timestamp: doc.createdAt };
 
-      const saved = await ChatMessage.create({ projectId, sessionId, sender: "founder", message: text });
-      const payload = { sessionId, projectId, message: text, sender: "founder", timestamp: saved.createdAt };
-
-      const room = `chat:${projectId}:${sessionId}`;
-      io.to(room).emit("chat:message", payload); // canonical (V2)
-      io.to(room).emit("founder_message", payload); // V1 alias, compatibility window
-      if (typeof ack === "function") ack({ ok: true, message: payload });
+      if (!duplicate) {
+        const room = `chat:${projectId}:${sessionId}`;
+        io.to(room).emit("chat:message", payload); // canonical (V2)
+        io.to(room).emit("founder_message", payload); // V1 alias, compatibility window
+      }
+      if (typeof ack === "function") ack({ ok: true, duplicate, message: payload });
     } catch (error) {
       if (typeof ack === "function") ack({ ok: false, error: error.message });
       else socket.emit("chat_error", { error: error.message });
@@ -135,32 +180,42 @@ function attachDashboardHandlers(io, socket) {
   });
 }
 
-function attachVisitorHandlers(io, socket) {
+function attachVisitorHandlers(io, socket, redis) {
   const { project, sessionId } = socket.data;
   const room = `chat:${project._id}:${sessionId}`;
   socket.join(room);
   logger.info({ socketId: socket.id, room }, "visitor socket connected");
 
-  socket.on("user_reply", async ({ message } = {}, ack) => {
+  socket.on("user_reply", async ({ message, clientMsgId } = {}, ack) => {
     try {
-      const text = String(message || "")
-        .trim()
-        .slice(0, MAX_MESSAGE_LENGTH);
-      if (!text) throw new Error("Message is empty");
-
-      const saved = await ChatMessage.create({ projectId: project._id, sessionId, sender: "user", message: text });
+      const text = cleanText(message);
+      await limitChat(
+        redis,
+        "chat_visitor",
+        `${project._id}:${sessionId}`,
+        VISITOR_CHAT_LIMIT,
+      );
+      const { doc, duplicate } = await saveChatOnce({
+        projectId: project._id,
+        sessionId,
+        sender: "user",
+        message: text,
+        clientMsgId,
+      });
       const payload = {
         sessionId,
         projectId: String(project._id),
         message: text,
         sender: "user",
-        timestamp: saved.createdAt,
+        timestamp: doc.createdAt,
       };
 
-      const dashboardRoom = `dashboard:${project._id}`;
-      io.to(dashboardRoom).emit("chat:message", payload); // canonical (V2)
-      io.to(dashboardRoom).emit("user_reply", payload); // V1 alias, compatibility window
-      if (typeof ack === "function") ack({ ok: true });
+      if (!duplicate) {
+        const dashboardRoom = `dashboard:${project._id}`;
+        io.to(dashboardRoom).emit("chat:message", payload); // canonical (V2)
+        io.to(dashboardRoom).emit("user_reply", payload); // V1 alias, compatibility window
+      }
+      if (typeof ack === "function") ack({ ok: true, duplicate });
     } catch (error) {
       if (typeof ack === "function") ack({ ok: false, error: error.message });
       else socket.emit("chat_error", { error: error.message });
@@ -195,3 +250,5 @@ function startHealthBroadcast(io, redis) {
   }, HEALTH_BROADCAST_MS);
   timer.unref?.(); // don't hold the process open just for this
 }
+
+module.exports.__test = { saveChatOnce, cleanText };

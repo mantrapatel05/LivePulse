@@ -21,6 +21,42 @@ const KNOWN_EVENT_TYPES = new Set([
 // Denylist pattern for common PII keys
 const PII_KEY_PATTERN =
   /(email|passw|ssn|social.?security|credit.?card|card.?number|cvv|phone|address|token|secret|auth|api.?key)/i;
+const SCAN_LIMIT = 4000;
+const QUERY_SENSITIVE_KEY = new RegExp(
+  PII_KEY_PATTERN.source + "|(^|[_-])(code|sid|session|otp|reset|jwt|sig|signature|key|pwd|pass)($|[_-])",
+  "i",
+);
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+const JWT_RE = /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/g;
+const LP_KEY_RE = /\blp_(?:live|test)_[A-Za-z0-9_]{6,}/g;
+const SECRET_RE = /\b(?:[spr]k_(?:live|test)_[A-Za-z0-9]{10,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})\b/g;
+const CARD_RE = /\b\d(?:[ -]?\d){12,18}\b/g;
+
+function luhn(digits) {
+  let sum = 0,
+    alt = false;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let n = digits.charCodeAt(i) - 48;
+    if (alt) {
+      n *= 2;
+      if (n > 9) n -= 9;
+    }
+    sum += n;
+    alt = !alt;
+  }
+  return sum % 10 === 0;
+}
+
+function scrubString(input) {
+  let s = String(input);
+  if (s.length > SCAN_LIMIT) s = s.slice(0, SCAN_LIMIT);
+  s = s.replace(EMAIL_RE, "[email]").replace(JWT_RE, "[jwt]").replace(LP_KEY_RE, "[key]").replace(SECRET_RE, "[key]");
+  // A 13-19 digit Luhn-valid run (including some epoch-ms strings) is masked as a card number.
+  return s.replace(CARD_RE, (m) => {
+    const d = m.replace(/\D/g, "");
+    return d.length >= 13 && d.length <= 19 && luhn(d) ? "[card]" : m;
+  });
+}
 
 // Validate the batch envelope; throws ValidationError on failure
 function validateEnvelope(body) {
@@ -84,7 +120,7 @@ function validateEvent(raw, index) {
       userId: typeof raw.userId === "string" ? raw.userId.slice(0, 200) : "anonymous",
       eventType: KNOWN_EVENT_TYPES.has(eventType) ? eventType : "custom",
       url: normalizeUrl(url),
-      element: typeof raw.element === "string" ? raw.element.slice(0, 300) : null,
+      element: typeof raw.element === "string" ? scrubString(raw.element).slice(0, 300) : null,
       consent: consent === "granted" ? "granted" : "n/a",
       occurredAt,
       properties: sanitizeProperties(raw.properties ?? raw.metadata ?? {}),
@@ -97,9 +133,20 @@ function normalizeUrl(url) {
   try {
     const u = new URL(url);
     u.hash = "";
+    u.username = "";
+    u.password = "";
+    let decoded = u.pathname;
+    try {
+      decoded = decodeURI(u.pathname);
+    } catch {}
+    const cleanPath = scrubString(decoded);
+    if (cleanPath !== decoded) u.pathname = cleanPath;
+    for (const [k, v] of [...u.searchParams.entries()]) {
+      if (QUERY_SENSITIVE_KEY.test(k) || scrubString(v) !== v) u.searchParams.set(k, "[redacted]");
+    }
     return u.toString();
   } catch {
-    return String(url).slice(0, 2048);
+    return scrubString(String(url)).slice(0, 2048);
   }
 }
 
@@ -130,10 +177,13 @@ function sanitizeProperties(input, { depth = 0, allowlist = null, maxKeys = MAX_
 }
 
 function sanitizeScalar(value) {
-  if (typeof value === "string") return value.slice(0, MAX_PROPERTY_STRING_LENGTH);
+  if (typeof value === "string") {
+    const s = /^https?:\/\//i.test(value) ? normalizeUrl(value) : scrubString(value);
+    return s.slice(0, MAX_PROPERTY_STRING_LENGTH);
+  }
   if (typeof value === "number" || typeof value === "boolean" || value === null) return value;
   if (Array.isArray(value)) return value.slice(0, 20).map((v) => sanitizeScalar(v));
-  return String(value).slice(0, MAX_PROPERTY_STRING_LENGTH);
+  return scrubString(String(value)).slice(0, MAX_PROPERTY_STRING_LENGTH);
 }
 
 module.exports = {
@@ -143,4 +193,5 @@ module.exports = {
   validateEvent,
   sanitizeProperties,
   normalizeUrl,
+  scrubString,
 };

@@ -1,7 +1,19 @@
 const mongoose = require("mongoose");
-const { deterministicEventId, toRow } = require("../../scripts/backfillClickhouse");
+const { deterministicEventId, toRow, checkpointKey, backfillQuery } = require("../../scripts/backfillClickhouse");
 
 describe("backfillClickhouse", () => {
+  it("scopes each checkpoint and query to the requested project", () => {
+    const projectId = new mongoose.Types.ObjectId();
+    const lastProcessedId = new mongoose.Types.ObjectId();
+
+    expect(checkpointKey(projectId)).toBe(`backfill:clickhouse:${projectId}`);
+    expect(backfillQuery(projectId, lastProcessedId)).toEqual({
+      projectId,
+      _id: { $gt: lastProcessedId },
+    });
+    expect(backfillQuery(projectId, null)).toEqual({ projectId });
+  });
+
   it("derives the same event_id from the same Mongo _id every time (rerun safety)", () => {
     const id = new mongoose.Types.ObjectId();
     expect(deterministicEventId(id)).toBe(deterministicEventId(id));

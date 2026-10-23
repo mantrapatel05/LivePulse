@@ -73,6 +73,21 @@ const ingestStage = new client.Histogram({
   registers: [register],
 });
 
+const httpRequests = new client.Counter({
+  name: "livepulse_http_requests_total",
+  help: "Completed HTTP requests by route, method, and status code",
+  labelNames: ["route", "method", "status_code"],
+  registers: [register],
+});
+
+const httpRequestDuration = new client.Histogram({
+  name: "livepulse_http_request_duration_ms",
+  help: "HTTP request duration in milliseconds by route and method",
+  labelNames: ["route", "method"],
+  buckets: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
+  registers: [register],
+});
+
 module.exports = {
   register,
   eventsAccepted,
@@ -85,4 +100,6 @@ module.exports = {
   queryLatency,
   socketConnections,
   ingestStage,
+  httpRequests,
+  httpRequestDuration,
 };

@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { normaliseEvent } from "../socket";
+import { normaliseEvent, shouldRenderInStream } from "../socket";
+
+describe("shouldRenderInStream", () => {
+  it("drops V1 aliases and control events, keeps canonical ones", () => {
+    for (const name of ["new-event", "session-updated", "user_reply", "system:health", "connect"]) {
+      expect(shouldRenderInStream(name)).toBe(false);
+    }
+    for (const name of ["live:event", "live:session", "chat:message"]) {
+      expect(shouldRenderInStream(name)).toBe(true);
+    }
+  });
+});
 
 describe("normaliseEvent", () => {
   it("classifies error-shaped payloads as 'err'", () => {
