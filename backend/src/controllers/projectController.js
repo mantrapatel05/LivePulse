@@ -2,37 +2,52 @@ const Project = require("../models/Project");
 const { generateApiKey } = require("../shared/apiKeyHash");
 const { invalidateApiKeyCache } = require("../shared/resolveApiKey");
 const { getRedisClient } = require("../shared/redisClient");
+const { generatePublicId, isValidPublicId } = require("../shared/publicId");
 
 // POST /api/projects — owner is always the verified session user, never a
 // client-supplied field. This is the fix for the old "trust me, this is my
 // user id" query-param model.
+// Referral is attacker-writable: validate, first-project-only, referrer must exist.
+// (A user who already owns a project can never self-refer, so no separate self-check is needed.)
+async function resolveReferral(userId, candidate) {
+  if (!isValidPublicId(candidate)) return null;
+  if ((await Project.countDocuments({ supabaseUserId: userId })) > 0) return null;
+  return (await Project.exists({ publicId: candidate })) ? candidate : null;
+}
+
 const createProject = async (req, res) => {
   try {
-    const { name } = req.body || {};
-
+    const { name, referredBy } = req.body || {};
     if (!name || !String(name).trim()) {
       return res.status(400).json({ message: "name is required" });
     }
-
     const { plaintext, prefix, hash } = generateApiKey();
+    const referral = await resolveReferral(req.user.id, referredBy);
 
-    const project = await Project.create({
-      name: String(name).trim(),
-      supabaseUserId: req.user.id,
-      apiKeyPrefix: prefix,
-      apiKeyHash: hash,
-      analyticsBackend: "dual",
-    });
-
+    let project;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        project = await Project.create({
+          name: String(name).trim(),
+          supabaseUserId: req.user.id,
+          apiKeyPrefix: prefix,
+          apiKeyHash: hash,
+          analyticsBackend: "dual",
+          publicId: generatePublicId(),
+          referredBy: referral,
+        });
+        break;
+      } catch (err) {
+        if (err && err.code === 11000 && err.keyPattern && err.keyPattern.publicId && attempt < 4) continue;
+        throw err;
+      }
+    }
     return res.status(201).json({
       message: "Project created successfully",
       project: { ...project.toObject(), apiKey: plaintext },
     });
   } catch (error) {
-    return res.status(500).json({
-      message: "Failed to create project",
-      error: error.message,
-    });
+    return res.status(500).json({ message: "Failed to create project", error: error.message });
   }
 };
 

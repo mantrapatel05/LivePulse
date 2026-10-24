@@ -10,6 +10,8 @@ const chatRoutes = require("./routes/chatRoutes");
 const collectRoutes = require("./routes/collectRoutes");
 const healthRoutes = require("./routes/healthRoutes");
 const analyticsV2Routes = require("./routes/analyticsV2Routes");
+const badgeRoutes = require("./routes/badgeRoutes");
+const publicRoutes = require("./routes/publicRoutes");
 const { register } = require("./shared/metrics");
 const { corsOrigin, publicCorsOptions } = require("./config/corsOrigin");
 const { requireMetricsAuth } = require("./middleware/metricsAuth");
@@ -22,9 +24,19 @@ app.set("trust proxy", 1);
 const PUBLIC_PREFIXES = ["/sdk", "/api/events", "/api/v2/collect"];
 const publicCors = cors(publicCorsOptions);
 const dashboardCors = cors({ origin: corsOrigin, credentials: true });
+const OPEN_PREFIXES = ["/badge", "/pulse", "/api/public"];
+function openCors(req, res, next) {
+  res.set("Access-Control-Allow-Origin", "*");
+  if (req.method === "OPTIONS") {
+    res.set({ "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "86400" });
+    return res.status(204).end();
+  }
+  return next();
+}
+const matches = (req, list) => list.some((p) => req.path === p || req.path.startsWith(p + "/"));
 app.use((req, res, next) => {
-  const isPublic = PUBLIC_PREFIXES.some((p) => req.path === p || req.path.startsWith(p + "/"));
-  return (isPublic ? publicCors : dashboardCors)(req, res, next);
+  if (matches(req, OPEN_PREFIXES)) return openCors(req, res, next);
+  return (matches(req, PUBLIC_PREFIXES) ? publicCors : dashboardCors)(req, res, next);
 });
 app.use(startRequestSpan);
 app.use(express.json());
@@ -49,6 +61,15 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/v2/projects", analyticsV2Routes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/v2/collect", collectRoutes);
+app.use("/badge", badgeRoutes);
+app.use("/api/public", publicRoutes);
+app.use(
+  "/pulse",
+  express.static(path.join(__dirname, "../public/pulse"), {
+    maxAge: "5m",
+    setHeaders(res) { res.setHeader("Access-Control-Allow-Origin", "*"); },
+  }),
+);
 app.use("/health", healthRoutes);
 
 app.get("/metrics", requireMetricsAuth, async (_req, res) => {

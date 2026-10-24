@@ -7,6 +7,7 @@ const {
   rotateProjectApiKey,
   getEmbedSnippet,
 } = require("../controllers/projectController");
+const { updateBadgeSettings, getBadgeStats } = require("../controllers/badgeController");
 const { requireDashboardAuth } = require("../middleware/supabaseAuth");
 const { requireProjectOwnership } = require("../middleware/projectOwnership");
 const { dashboardRateLimit } = require("../middleware/dashboardRateLimit");
@@ -17,5 +18,7 @@ router.post("/", createProject);
 router.get("/", listProjects);
 router.post("/:projectId/rotate-key", requireProjectOwnership, rotateProjectApiKey);
 router.get("/:projectId/embed", requireProjectOwnership, getEmbedSnippet);
+router.patch("/:projectId/badge", requireProjectOwnership, updateBadgeSettings);
+router.get("/:projectId/badge", requireProjectOwnership, getBadgeStats);
 
 module.exports = router;
