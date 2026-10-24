@@ -6,6 +6,8 @@ const EventSchema = new mongoose.Schema({
     ref: "Project",
     required: true,
   },
+  // Optional for pre-migration V1 records; all new V2 writes persist this key.
+  eventId: { type: String },
   sessionId: {
     type: String,
     required: true,
@@ -52,6 +54,17 @@ EventSchema.index(
   { receivedAt: 1 },
   {
     expireAfterSeconds: 60 * 60 * 24 * 30,
+  },
+);
+
+// Exclude legacy records that predate eventId while enforcing retry
+// idempotency for all events accepted after the migration.
+EventSchema.index(
+  { projectId: 1, eventId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { eventId: { $type: "string" } },
+    name: "uniq_event_project_event_id",
   },
 );
 

@@ -1,0 +1,42 @@
+name: Analytics parity
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: analytics-parity
+  cancel-in-progress: false
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      MONGO_URI: ${{ secrets.PARITY_MONGO_URI }}
+      CLICKHOUSE_URL: ${{ secrets.PARITY_CLICKHOUSE_URL }}
+      CLICKHOUSE_USER: ${{ secrets.PARITY_CLICKHOUSE_USER }}
+      CLICKHOUSE_PASSWORD: ${{ secrets.PARITY_CLICKHOUSE_PASSWORD }}
+      CLICKHOUSE_DATABASE: ${{ secrets.PARITY_CLICKHOUSE_DATABASE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Require parity service credentials
+        shell: bash
+        run: |
+          test -n "$MONGO_URI" || { echo "Missing PARITY_MONGO_URI repository secret"; exit 1; }
+          test -n "$CLICKHOUSE_URL" || { echo "Missing PARITY_CLICKHOUSE_URL repository secret"; exit 1; }
+      - run: npm ci
+      - name: Compare dual-write projects and persist daily parity
+        run: npm run check:parity

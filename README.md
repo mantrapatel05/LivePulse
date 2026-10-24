@@ -6,7 +6,7 @@ Self-hosted, real-time web analytics. A lightweight browser SDK captures behavio
 
 ## Features
 
-- **Real-time event stream** — `page_view`, `click`, `error`, `rage_click`, `scroll_depth`, `time_on_page`, `custom` broadcast live over Socket.IO (`live:event` + `new-event` alias).
+- **Real-time event stream** — `page_view`, `click`, `error`, `rage_click`, `scroll_depth`, `time_on_page`, `custom` broadcast live over the canonical Socket.IO `live:event` event.
 - **Session intelligence** — live-now state in Redis (`active:{project}` / `session:{project}:{session}`, 5-min TTL) plus durable session aggregates in Mongo; entry/exit, engaged seconds, device/browser/geo.
 - **Error clustering** — ClickHouse `error_clusters_v2` materialized view groups by normalized signature with occurrences, affected sessions (HLL), and last seen.
 - **Founder-to-visitor chat** — per-session rooms (`chat:{projectId}:{sessionId}`), persisted in Mongo, live over sockets.
@@ -31,7 +31,7 @@ Dashboard ◀── REST (Mongo reads today) + Socket.IO rooms ─────�
 
 Three processes: `api` (`node server.js`, HTTP + Socket.IO), `worker` (`node worker.js`, Redis → ClickHouse only, no Mongo), `frontend` (Vite + React). Backed by MongoDB 7, Redis 7, ClickHouse 24.8 — see `docker-compose.yml`.
 
-**Ingest cost per batch:** 2 Redis round trips (claim-all, then publish-all + session touches), not 3 per event. Single-event batches keep a sequential fast path (pipelines lose at N=1). Mongo dual-write is batched (`insertMany({ordered:false})` + one upsert per distinct session). Claims are released on failure so retries are not dropped as duplicates; the worker dedupes on the canonical `event_id` (`mongo:<ObjectId>` in dual mode, `live:<eventId>` in clickhouse-only mode).
+**Ingest cost per batch:** 2 Redis round trips (claim-all, then publish-all + session touches), not 3 per event. Single-event batches keep a sequential fast path (pipelines lose at N=1). Mongo dual-write uses idempotent event-ID upserts plus one upsert per distinct session. Claims are released on failure so retries are not dropped as duplicates; Mongo's unique `(projectId, eventId)` index prevents retry duplicates, and the worker dedupes on the canonical `event_id` (`mongo:<ObjectId>` in dual mode, `live:<eventId>` in clickhouse-only mode).
 
 ## Monorepo layout
 
@@ -216,7 +216,7 @@ CORS: collector endpoints and visitor sockets accept any origin; they authentica
 | `GET /metrics` | none in dev · `Bearer METRICS_TOKEN` in prod (unset → deliberate `503`) | Prometheus exposition (`livepulse_events_*`, `livepulse_ingest_stage_ms`, `livepulse_stream_pending_count`, …) |
 | `GET /sdk/livepulse.js` | none | Minified SDK (5-min cache, CORS `*`) |
 
-Sockets: dashboards authenticate with the Supabase JWT and join `project:{id}` / `chat:{projectId}:{sessionId}`; visitors connect with `{apiKey, sessionId}` and are pinned to their own chat room. Events fan out as `live:event` (+ `new-event` V1 alias), sessions as `live:session` (+ `session-updated`), chat as `founder_message` / `user_reply`, health as `system:health` every 15 s.
+Sockets: dashboards authenticate with the Supabase JWT and join `project:{id}` / `chat:{projectId}:{sessionId}`; visitors connect with `{apiKey, sessionId}` and are pinned to their own chat room. Events fan out as `live:event`, sessions as `live:session`, chat as `founder_message` / `user_reply`, health as `system:health` every 15 s.
 
 ## Analytics backends and cutover
 
@@ -233,6 +233,8 @@ node scripts/setAnalyticsBackend.js <projectId> <target> --force  # bypass parit
 ```
 
 Before moving `dual`→`clickhouse`, that project's backfill checkpoint (`backfill:clickhouse:<projectId>`) must have `processedCount > 0`; the newest seven parity runs must all be within threshold, cover seven consecutive UTC days, and the newest run must be no more than one day old. Those runs must include nonzero Mongo event counts. `--force` bypasses these backfill/parity gate checks and should be used only for an explicitly accepted cutover risk; it does not permit an invalid state transition. Run `npm run check:parity <projectId>` daily while validating the migration. Moving `clickhouse`→`dual` restores dual writes; Mongo may be stale after clickhouse-only operation, so reconcile/backfill before relying on Mongo reads.
+
+GitHub Actions runs the parity check daily. Configure repository secrets `PARITY_MONGO_URI` and `PARITY_CLICKHOUSE_URL`; optionally set `PARITY_CLICKHOUSE_USER`, `PARITY_CLICKHOUSE_PASSWORD`, and `PARITY_CLICKHOUSE_DATABASE` if they differ from ClickHouse defaults. Before deploying event-ID idempotency, run `cd backend && npm run migrate:event-idempotency` against Mongo to create the partial unique index. Legacy event documents without `eventId` remain outside that index.
 
 Current state: the ClickHouse write path (worker + MVs + pure-SQL builders in `src/shared/analyticsQueries.js`) is live; dashboard reads still use Mongo until cutover.
 

@@ -176,7 +176,7 @@ async function ingestSingle({ project, projectId, item, rejected, io, correlatio
   }
 }
 
-/** Canonical V2 event name + the V1 alias, retained only for the migration compatibility window. */
+/** Emit the canonical V2 event name. */
 function emitLive(io, projectId, event) {
   if (!io) return;
   const room = `project:${projectId}`;
@@ -191,37 +191,55 @@ function emitLive(io, projectId, event) {
     timestamp: event.occurredAt,
   };
   io.to(room).emit("live:event", payload);
-  io.to(room).emit("new-event", payload); // V1 alias
 }
 
 /**
- * Batched dual-write: 1 insertMany + 1 upsert per distinct session, not
- * 2 writes per event. Session merge preserves per-event semantics: count
+ * Batched dual-write: one idempotent Mongo bulk upsert plus one upsert per
+ * distinct session. Session merge preserves per-event semantics: count
  * sums, last-wins fields come from the latest occurredAt, startedAt from
  * the earliest (matches the old $setOnInsert behaviour on first insert).
  * Returns Map<batchIndex, EventDoc> for canonical _id stamping.
  */
 async function dualWriteMongoBatch({ project, items, io }) {
-  const docs = await Event.insertMany(
-    items.map(({ event: e }) => ({
-      projectId: project._id,
-      sessionId: e.sessionId,
-      userId: e.userId,
-      eventType: e.eventType,
-      url: e.url,
-      element: e.element,
-      timestamp: e.occurredAt,
-      metadata: e.properties,
-      city: e.city,
-    })),
-    { ordered: false },
-  );
-
+  const operations = items.map(({ event: e }) => ({
+    updateOne: {
+      filter: { projectId: project._id, eventId: e.eventId },
+      update: {
+        $setOnInsert: {
+          projectId: project._id,
+          eventId: e.eventId,
+          sessionId: e.sessionId,
+          userId: e.userId,
+          eventType: e.eventType,
+          url: e.url,
+          element: e.element,
+          timestamp: e.occurredAt,
+          metadata: e.properties,
+          city: e.city,
+        },
+      },
+      upsert: true,
+    },
+  }));
+  const result = await Event.bulkWrite(operations, { ordered: false });
+  const insertedIndexes = new Set(Object.keys(result.upsertedIds || {}).map(Number));
+  const docs = await Event.find({
+    projectId: project._id,
+    eventId: { $in: items.map(({ event }) => event.eventId) },
+  }).lean();
+  const docsByEventId = new Map(docs.map((doc) => [doc.eventId, doc]));
   const byIndex = new Map();
-  docs.forEach((doc, i) => byIndex.set(items[i].index, doc));
+  items.forEach(({ index, event }) => {
+    const doc = docsByEventId.get(event.eventId);
+    if (!doc) throw new Error(`Mongo event upsert missing eventId ${event.eventId}`);
+    byIndex.set(index, doc);
+  });
 
   const bySession = new Map();
-  for (const { event: e } of items) {
+  for (const [itemIndex, { event: e }] of items.entries()) {
+    // A Redis retry may reach Mongo after the first Mongo write succeeded.
+    // Count only events newly inserted by this attempt.
+    if (!insertedIndexes.has(itemIndex)) continue;
     const s = bySession.get(e.sessionId) || { count: 0, first: e, last: e };
     s.count++;
     if (e.occurredAt < s.first.occurredAt) s.first = e;
@@ -262,7 +280,6 @@ async function dualWriteMongoBatch({ project, items, io }) {
         city: session.city,
       };
       io.to(room).emit("live:session", payload);
-      io.to(room).emit("session-updated", payload); // V1 alias
     }
   }
 
@@ -276,8 +293,9 @@ async function dualWriteMongoBatch({ project, items, io }) {
  * skip this entirely — no more Mongo Event documents are created for them.
  */
 async function dualWriteMongo({ project, event, io }) {
-  const newEvent = await Event.create({
+  const eventData = {
     projectId: project._id,
+    eventId: event.eventId,
     sessionId: event.sessionId,
     userId: event.userId,
     eventType: event.eventType,
@@ -286,7 +304,17 @@ async function dualWriteMongo({ project, event, io }) {
     timestamp: event.occurredAt,
     metadata: event.properties,
     city: event.city,
-  });
+  };
+  const write = await Event.updateOne(
+    { projectId: project._id, eventId: event.eventId },
+    { $setOnInsert: eventData },
+    { upsert: true },
+  );
+  const newEvent = await Event.findOne({ projectId: project._id, eventId: event.eventId });
+
+  // Do not apply session counters again when the event already exists from a
+  // prior attempt whose Redis publish failed.
+  if (!write.upsertedCount) return { event: newEvent, session: null };
 
   const session = await Session.findOneAndUpdate(
     { projectId: project._id, sessionId: event.sessionId },
@@ -316,7 +344,6 @@ async function dualWriteMongo({ project, event, io }) {
       city: session.city,
     };
     io.to(room).emit("live:session", payload);
-    io.to(room).emit("session-updated", payload); // V1 alias
   }
 
   return { event: newEvent, session };

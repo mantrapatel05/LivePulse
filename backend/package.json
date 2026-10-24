@@ -17,6 +17,7 @@
     "build:sdk": "node scripts/buildSdk.js",
     "backfill:clickhouse": "node scripts/backfillClickhouse.js",
     "check:parity": "node scripts/checkParity.js",
+    "migrate:event-idempotency": "node scripts/migrateEventIdempotency.js",
     "set:analytics-backend": "node scripts/setAnalyticsBackend.js",
     "seed:fixtures": "node scripts/seedFixtures.js"
   },

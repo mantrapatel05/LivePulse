@@ -93,6 +93,10 @@ async function run() {
         .select("_id name")
         .lean();
 
+  if (!projects.length) {
+    throw new Error("No dual-write projects found; parity check produced no reports.");
+  }
+
   const reports = [];
   for (const project of projects) {
     const report = await checkProject(project._id, from, to);
