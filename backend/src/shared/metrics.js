@@ -88,6 +88,19 @@ const httpRequestDuration = new client.Histogram({
   registers: [register],
 });
 
+const badgeRequests = new client.Counter({
+  name: "livepulse_badge_requests_total",
+  help: "Public badge/pulse requests by result",
+  labelNames: ["result"], // ok | not_found | rate_limited | error
+  registers: [register],
+});
+
+const badgeCountRefreshes = new client.Counter({
+  name: "livepulse_badge_count_refreshes_total",
+  help: "Badge count recomputations (count-cache misses)",
+  registers: [register],
+});
+
 module.exports = {
   register,
   eventsAccepted,
@@ -102,4 +115,6 @@ module.exports = {
   ingestStage,
   httpRequests,
   httpRequestDuration,
+  badgeRequests,
+  badgeCountRefreshes,
 };

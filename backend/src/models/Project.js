@@ -31,6 +31,13 @@ const ProjectSchema = new mongoose.Schema({
     type: String,
     required: true,
   },  
+  publicId: { type: String, index: true, unique: true, sparse: true },
+  badge: {
+    enabled: { type: Boolean, default: false },
+    minCount: { type: Number, default: 3, min: 3, max: 999 },
+  },
+  // Attribution only (attacker-writable). Set at FIRST project creation. Never attach rewards to this.
+  referredBy: { type: String, default: null },
   createdAt: {
     type: Date,
     default: Date.now,

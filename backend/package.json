@@ -16,6 +16,7 @@
     "worker": "node worker.js",
     "build:sdk": "node scripts/buildSdk.js",
     "backfill:clickhouse": "node scripts/backfillClickhouse.js",
+    "backfill:public-id": "node scripts/backfillPublicId.js",
     "check:parity": "node scripts/checkParity.js",
     "migrate:event-idempotency": "node scripts/migrateEventIdempotency.js",
     "set:analytics-backend": "node scripts/setAnalyticsBackend.js",

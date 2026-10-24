@@ -1,5 +1,6 @@
 const {
   buildOverviewQuery,
+  buildTodayVisitorsQuery,
   buildTimeseriesQuery,
   buildTopPagesQuery,
   buildEventBreakdownQuery,
@@ -13,6 +14,17 @@ const {
 const range = { projectId: "p1", from: "2026-01-01 00:00:00", to: "2026-01-02 00:00:00" };
 
 describe("analyticsQueries builders", () => {
+  it("todayVisitors: counts distinct sessions from events_v2 with bound project and UTC start", () => {
+    const input = { projectId: "p1", from: "2026-01-01 00:00:00.000" };
+    const { query, query_params } = buildTodayVisitorsQuery(input);
+    expect(query).toContain("FROM events_v2");
+    expect(query).toContain("uniqExact(session_id)");
+    expect(query).toContain("{projectId:String}");
+    expect(query).toContain("{from:DateTime64(3)}");
+    expect(query).not.toContain(input.projectId);
+    expect(query_params).toEqual(input);
+  });
+
   it("overview: scopes to events_v2, binds projectId/from/to as real params (not string-interpolated)", () => {
     const { query, query_params } = buildOverviewQuery(range);
     expect(query).toContain("FROM events_v2");
@@ -111,6 +123,7 @@ describe("analyticsQueries builders", () => {
   it("every builder returns only real ClickHouse param placeholders that appear in query_params", () => {
     const builders = [
       buildOverviewQuery(range),
+      buildTodayVisitorsQuery({ projectId: "p1", from: range.from }),
       buildTimeseriesQuery(range),
       buildTopPagesQuery(range),
       buildEventBreakdownQuery(range),

@@ -27,6 +27,18 @@ function buildOverviewQuery({ projectId, from, to }) {
   };
 }
 
+function buildTodayVisitorsQuery({ projectId, from }) {
+  return {
+    query: `
+      SELECT uniqExact(session_id) AS visitors
+      FROM events_v2
+      WHERE project_id = {projectId:String}
+        AND occurred_at >= {from:DateTime64(3)}
+    `,
+    query_params: { projectId, from },
+  };
+}
+
 function buildTimeseriesQuery({ projectId, from, to, interval = "hour", timezone = "UTC" }) {
   const bucketExpr =
     interval === "day"
@@ -217,6 +229,7 @@ async function runQuery({ query, query_params }, endpointLabel) {
 
 module.exports = {
   buildOverviewQuery,
+  buildTodayVisitorsQuery,
   buildTimeseriesQuery,
   buildTopPagesQuery,
   buildEventBreakdownQuery,
