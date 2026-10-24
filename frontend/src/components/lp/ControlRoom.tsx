@@ -11,6 +11,7 @@ import {
 import { clock, num, timeAgo, toArray, usePolling } from "../../lib/usePolling";
 import { Bars, Empty, Panel, Spark, Stat } from "./Panel";
 import { ChatDock } from "./ChatDock";
+import { HypeBadgePreview } from "./HypeBadgePreview";
 
 type Row = Record<string, unknown>;
 type Session = {
@@ -320,50 +321,53 @@ export function InstallPanel({ project }: { project: LPProject }) {
   }
 
   return (
-    <Panel
-      label="install"
-      title="one script tag"
-      className="span-12"
-      right={
-        <button
-          type="button"
-          className="lp-btn-link"
-          onClick={() => void rotate()}
-          disabled={rotating}
-        >
-          {rotating ? "rotating…" : "rotate key"}
-        </button>
-      }
-    >
-      {error && (
-        <div className="lp-alert" role="alert">
-          <b>Couldn't load install snippet</b>
-          {error}
-        </div>
-      )}
-      {fullSnippet && (
-        <>
-          <pre className="lp-code">{fullSnippet}</pre>
-          <button type="button" className="lp-btn small" onClick={() => void copy()}>
-            {copied ? "copied ✓" : "copy snippet"}
+    <>
+      <Panel
+        label="install"
+        title="one script tag"
+        className="span-12"
+        right={
+          <button
+            type="button"
+            className="lp-btn-link"
+            onClick={() => void rotate()}
+            disabled={rotating}
+          >
+            {rotating ? "rotating…" : "rotate key"}
           </button>
-          <p className="lp-empty">
-            This is the only time this key is shown in full — copy it now. It's still safe to embed
-            publicly: it only writes events and can never read your data. Chat is enabled by
-            default; drop <code>data-chat="false"</code> to disable it.
-          </p>
-        </>
-      )}
-      {!fullSnippet && maskedSnippet && (
-        <>
-          <pre className="lp-code">{maskedSnippet}</pre>
-          <div className="lp-alert warn" role="status">
-            <b>Key hidden after creation</b>
-            LivePulse only stores a hash of your API key, so it can't be shown again here. Rotate to
-            get a fresh one — the old key stops working the moment you do.
+        }
+      >
+        {error && (
+          <div className="lp-alert" role="alert">
+            <b>Couldn't load install snippet</b>
+            {error}
           </div>
-        </>
-      )}
-    </Panel>
+        )}
+        {fullSnippet && (
+          <>
+            <pre className="lp-code">{fullSnippet}</pre>
+            <button type="button" className="lp-btn small" onClick={() => void copy()}>
+              {copied ? "copied ✓" : "copy snippet"}
+            </button>
+            <p className="lp-empty">
+              This is the only time this key is shown in full — copy it now. It's still safe to
+              embed publicly: it only writes events and can never read your data. Chat is enabled by
+              default; drop <code>data-chat="false"</code> to disable it.
+            </p>
+          </>
+        )}
+        {!fullSnippet && maskedSnippet && (
+          <>
+            <pre className="lp-code">{maskedSnippet}</pre>
+            <div className="lp-alert warn" role="status">
+              <b>Key hidden after creation</b>
+              LivePulse only stores a hash of your API key, so it can't be shown again here. Rotate
+              to get a fresh one — the old key stops working the moment you do.
+            </div>
+          </>
+        )}
+      </Panel>
+      <HypeBadgePreview project={project} />
+    </>
   );
 }

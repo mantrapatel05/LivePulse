@@ -8,11 +8,15 @@ import { getSupabase } from "../supabaseClient";
 import {
   ApiError,
   createProject,
+  getBadgeStats,
   getEmbedSnippet,
   listProjects,
   livepulseApi,
+  recordLandingHit,
   rotateKey,
+  updateBadge,
 } from "../api";
+import { captureReferralFromUrl, peekReferral } from "../referral";
 
 function mockAuthedSupabase(token = "test-token") {
   (getSupabase as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
@@ -43,6 +47,7 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
 
 describe("dashboard API client", () => {
   beforeEach(() => {
+    localStorage.clear();
     mockAuthedSupabase();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ projects: [] })));
   });
@@ -94,6 +99,60 @@ describe("dashboard API client", () => {
     await getEmbedSnippet("proj-9");
     const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toContain("/api/projects/proj-9/embed");
+  });
+
+  it("PATCHes badge settings and returns the updated project", async () => {
+    const project = { _id: "proj-1", name: "Acme", badge: { enabled: true, minCount: 5 } };
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(jsonResponse({ project }));
+
+    await expect(updateBadge("proj-1", { enabled: true })).resolves.toEqual(project);
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/api/projects/proj-1/badge");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body)).toEqual({ enabled: true });
+  });
+
+  it("GETs badge stats for a project", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ publicId: "AbCdEfGhJkLm" }),
+    );
+    await getBadgeStats("proj-1");
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/api/projects/proj-1/badge");
+    expect(init.method).toBeUndefined();
+  });
+
+  it("sends a stored referral with the first project request and clears it after success", async () => {
+    const publicId = "AbCdEfGhJkLm";
+    captureReferralFromUrl(`?ref=badge&p=${publicId}`);
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ project: { _id: "proj-1", name: "Acme" } }),
+    );
+
+    await createProject("Acme");
+    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({ name: "Acme", referredBy: publicId });
+    expect(peekReferral()).toBeNull();
+  });
+
+  it("omits referredBy when there is no stored referral", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse({ project: { _id: "proj-1", name: "Acme" } }),
+    );
+    await createProject("Acme");
+    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(init.body).toBe('{"name":"Acme"}');
+  });
+
+  it("records a landing hit without throwing when fetch rejects", () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("network down"));
+    const publicId = "AbCdEfGhJkLm";
+
+    expect(() => recordLandingHit(publicId)).not.toThrow();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining(`/api/public/${encodeURIComponent(publicId)}/landing-hit`),
+      { method: "POST", keepalive: true },
+    );
   });
 
   describe("livepulseApi endpoint mapping", () => {

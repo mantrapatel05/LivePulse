@@ -1,5 +1,6 @@
 import { API_URL } from "./config";
 import { getSupabase } from "./supabaseClient";
+import { peekReferral, clearReferral } from "./referral";
 
 export type LPProject = {
   _id: string;
@@ -11,7 +12,19 @@ export type LPProject = {
   apiKeyPrefix?: string;
   supabaseUserId?: string;
   analyticsBackend?: "mongo" | "dual" | "clickhouse";
+  publicId?: string;
+  badge?: BadgeSettings;
+  referredBy?: string | null;
   createdAt?: string;
+};
+
+export type BadgeSettings = { enabled: boolean; minCount: number };
+export type BadgeStats = {
+  publicId: string | null;
+  badge: BadgeSettings;
+  today: { impressions: number; landingHits: number };
+  last7Days: { day: string; impressions: number; landingHits: number }[];
+  referralProjects: number;
 };
 
 export class ApiError extends Error {
@@ -88,11 +101,40 @@ function unwrapProject(r: { project: LPProject } | LPProject): LPProject {
   return "project" in r ? r.project : r;
 }
 
-export function createProject(name: string) {
+export function createProject(
+  name: string,
+  referredBy: string | null | undefined = peekReferral(),
+) {
   return dashboardRequest<{ project: LPProject } | LPProject>("/api/projects", {
     method: "POST",
-    body: JSON.stringify({ name }),
-  }).then(unwrapProject);
+    body: JSON.stringify({ name, ...(referredBy ? { referredBy } : {}) }),
+  }).then((r) => {
+    clearReferral(); // attribution applies to the first project only
+    return unwrapProject(r);
+  });
+}
+
+export function updateBadge(projectId: string, patch: Partial<BadgeSettings>) {
+  return dashboardRequest<{ project: LPProject }>(`/api/projects/${projectId}/badge`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  }).then((r) => r.project);
+}
+
+export function getBadgeStats(projectId: string) {
+  return dashboardRequest<BadgeStats>(`/api/projects/${projectId}/badge`);
+}
+
+/** Fire-and-forget: top of the referral funnel. Never throws, never awaited on a critical path. */
+export function recordLandingHit(publicId: string): void {
+  try {
+    void fetch(`${API_URL}/api/public/${encodeURIComponent(publicId)}/landing-hit`, {
+      method: "POST",
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* ignore */
+  }
 }
 
 export function rotateKey(projectId: string) {

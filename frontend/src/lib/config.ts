@@ -12,6 +12,11 @@ const env = import.meta.env as Record<string, string | undefined>;
 
 export const API_URL = (env.VITE_API_URL ?? "http://localhost:5000").replace(/\/$/, "");
 
+/** Public dashboard/landing origin used inside badge snippets. Falls back to the current origin. */
+export const PUBLIC_DASHBOARD_URL = (
+  env.VITE_PUBLIC_DASHBOARD_URL || (typeof window !== "undefined" ? window.location.origin : "")
+).replace(/\/$/, "");
+
 /** Publishable values — safe in the client bundle. Env vars win when set. */
 export const SUPABASE_URL = env.VITE_SUPABASE_URL ?? "https://bnhgqrfstemtcnsbiwdx.supabase.co";
 export const SUPABASE_ANON_KEY =

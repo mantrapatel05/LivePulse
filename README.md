@@ -142,6 +142,7 @@ ALLOW_TEST_SEED=true TEST_OWNER_ID=<uid> npm run seed:test-project  # upserts 69
 | `VITE_API_URL` | Yes | `http://localhost:5000` |
 | `VITE_SUPABASE_URL` | Yes | `https://xyz.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | Yes | publishable/anon key |
+| `VITE_PUBLIC_DASHBOARD_URL` | No | Public dashboard origin for badge links; defaults to the current origin |
 
 ## SDK usage
 
@@ -180,6 +181,41 @@ Manual init (full control):
 ```
 
 Transport contract: versioned envelope `{schemaVersion: 2, sentAt, events[]}` with per-event `{eventId, sessionId, userId, eventType, url, element, occurredAt, consent, properties, clientContext}`; size-bounded chunks (60 KB); bounded `localStorage` retry queue (200) with exponential backoff + jitter; non-2xx (including the collector's `503` on partial internal failure) is retried, idempotency claims make the retry safe. Auto-tracked: page views + SPA navigations, clicks (x/y), errors, rage clicks (≥3 clicks / 500 ms / 30 px), scroll depth (25/50/75/100), time on page (visibility + unload). Errors and rage clicks trigger an immediate flush, throttled to one urgent flush per 2 s.
+
+## Hype badge (social proof)
+
+Enable **show badge** in the project's dashboard panel and choose the minimum live-reader threshold. The badge is opt-in and uses a public ID; it never shows the project name or write API key.
+
+Copy one of these snippets from the dashboard:
+
+```html
+<a href="https://your-dashboard/?ref=badge&p=PUBLIC_ID"><img src="https://your-api/badge/PUBLIC_ID.svg" alt="LivePulse badge" height="30"></a>
+```
+
+```markdown
+[![LivePulse](https://your-api/badge/PUBLIC_ID.svg)](https://your-dashboard/?ref=badge&p=PUBLIC_ID)
+```
+
+```tsx
+<a href="https://your-dashboard/?ref=badge&p=PUBLIC_ID"><img src="https://your-api/badge/PUBLIC_ID.svg" alt="LivePulse badge" height={30} /></a>
+```
+
+The badge follows an honesty ladder: it shows the live count only when active sessions meet the configured threshold; otherwise it shows real visitors today when that count reaches the brand floor; below that it shows the LivePulse brand with no number. “Reading now” means sessions active in the last five minutes. “Today” is the current UTC day and counts distinct sessions. No numbers are padded or simulated.
+
+To add a live count to text you control, include the standalone pulse script and its target element. It leaves your fallback text alone when the badge has no honest number to show:
+
+```html
+<script src="https://your-api/pulse/pulse.js" data-public-id="PUBLIC_ID" defer></script>
+<span data-lp-pulse></span>
+```
+
+Badge endpoints are `GET /badge/:publicId.svg`, `GET /api/public/:publicId/pulse`, `POST /api/public/:publicId/landing-hit`, and owner-authenticated `PATCH` or `GET /api/projects/:id/badge` for settings and stats.
+
+Configure the optional dashboard link origin with `VITE_PUBLIC_DASHBOARD_URL`; when unset, snippets use the current dashboard origin. Backend badge defaults are `BADGE_COUNT_TTL_SECONDS=15`, `BADGE_PROJECT_TTL_SECONDS=60`, `BADGE_BRAND_FLOOR=3`, `BADGE_RATE_LIMIT_PER_IP_PER_MIN=120`, and `BADGE_LANDING_RATE_LIMIT_PER_IP_PER_MIN=60`.
+
+For deployment, deploy the backend schema first, run `cd backend && npm run backfill:public-id`, then enable badges in the dashboard. Badge cache invalidation is local to each API instance; a disable can take up to `BADGE_PROJECT_TTL_SECONDS` to reach other instances.
+
+The API trusts one proxy hop (`trust proxy = 1`), so that hop count must match the real proxy chain. If a CDN sits in front of that proxy, all requests may resolve to one IP; verify client IPs after deployment. Impressions are a rough hint because CDNs cache most badge image requests. Landing hits and first-project `referredBy` attribution measure the referral funnel more directly. `referredBy` is attacker-writable and is for measurement only; never attach rewards to it.
 
 ## Known limitations
 

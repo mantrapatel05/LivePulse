@@ -80,6 +80,12 @@ jobs:
           size=$(gzip -c public/sdk/livepulse.js | wc -c)
           echo "gzipped bytes: $size"
           test "$size" -lt 10240
+      - name: pulse.js size gate (< 2 KB)
+        working-directory: backend
+        run: |
+          size=$(wc -c < public/pulse/pulse.js)
+          echo "pulse.js bytes: $size"
+          test "$size" -lt 2048
 
   frontend:
     runs-on: ubuntu-latest
