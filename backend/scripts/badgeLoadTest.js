@@ -1,6 +1,7 @@
-// Run the API with BADGE_RATE_LIMIT_PER_IP_PER_MIN=1000000 for this test.
+// Supports http:// and https://. Run the API with BADGE_RATE_LIMIT_PER_IP_PER_MIN=1000000 for this test.
 // Numbers measured on the same machine are inflated by self-contention.
 const http = require("http");
+const https = require("https");
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:5000";
 const PUBLIC_ID = process.env.PUBLIC_ID;
@@ -10,6 +11,12 @@ const P99_BUDGET_MS = positiveNumber(process.env.P99_BUDGET_MS, 100);
 const METRICS_TOKEN = process.env.METRICS_TOKEN;
 const METRIC = "livepulse_badge_count_refreshes_total";
 
+function transportFor(url) {
+  if (url.protocol === "https:") return https;
+  if (url.protocol === "http:") return http;
+  throw new Error("BASE_URL must use http:// or https://");
+}
+
 function positiveNumber(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : fallback;
@@ -17,7 +24,7 @@ function positiveNumber(value, fallback) {
 
 function requestText(url, agent, headers = {}) {
   return new Promise((resolve, reject) => {
-    const req = http.get(url, { agent, headers }, (res) => {
+    const req = transportFor(url).get(url, { agent, headers }, (res) => {
       let body = "";
       res.setEncoding("utf8");
       res.on("data", (chunk) => { body += chunk; });
@@ -49,7 +56,7 @@ function requestBadge(url, agent) {
       const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
       resolve({ status, elapsedMs });
     };
-    const req = http.get(url, { agent }, (res) => {
+    const req = transportFor(url).get(url, { agent }, (res) => {
       res.resume();
       res.on("end", () => finish(res.statusCode || 0));
     });
@@ -71,8 +78,8 @@ async function main() {
   }
 
   const base = new URL(BASE_URL);
-  if (base.protocol !== "http:") throw new Error("BASE_URL must use http://");
-  const agent = new http.Agent({ keepAlive: true, maxSockets: CONCURRENCY });
+  const transport = transportFor(base);
+  const agent = new transport.Agent({ keepAlive: true, maxSockets: CONCURRENCY });
   const badgeUrl = new URL(`/badge/${encodeURIComponent(PUBLIC_ID)}.svg`, base);
 
   try {
@@ -117,6 +124,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`Badge load test failed: ${error.message}`);
+  console.error(`Badge load test failed: ${error.message || error.code || error.name}`);
   process.exitCode = 1;
 });

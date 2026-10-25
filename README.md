@@ -213,6 +213,8 @@ Badge endpoints are `GET /badge/:publicId.svg`, `GET /api/public/:publicId/pulse
 
 Configure the optional dashboard link origin with `VITE_PUBLIC_DASHBOARD_URL`; when unset, snippets use the current dashboard origin. Backend badge defaults are `BADGE_COUNT_TTL_SECONDS=15`, `BADGE_PROJECT_TTL_SECONDS=60`, `BADGE_BRAND_FLOOR=3`, `BADGE_RATE_LIMIT_PER_IP_PER_MIN=120`, and `BADGE_LANDING_RATE_LIMIT_PER_IP_PER_MIN=60`.
 
+The badge load test (`cd backend && node scripts/badgeLoadTest.js`) accepts `BASE_URL` values using `http://` or `https://`.
+
 For deployment, deploy the backend schema first, run `cd backend && npm run backfill:public-id`, then enable badges in the dashboard. Badge cache invalidation is local to each API instance; a disable can take up to `BADGE_PROJECT_TTL_SECONDS` to reach other instances.
 
 The API trusts one proxy hop (`trust proxy = 1`), so that hop count must match the real proxy chain. If a CDN sits in front of that proxy, all requests may resolve to one IP; verify client IPs after deployment. Impressions are a rough hint because CDNs cache most badge image requests. Landing hits and first-project `referredBy` attribution measure the referral funnel more directly. `referredBy` is attacker-writable and is for measurement only; never attach rewards to it.
