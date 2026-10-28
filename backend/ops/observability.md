@@ -8,6 +8,8 @@ Set `OTEL_EXPORTER_OTLP_ENDPOINT` to the OTLP/HTTP endpoint for your collector o
 
 The API creates server spans and child ingestion/query spans. Trace context is carried through Redis Streams, and ClickHouse worker batches link to a bounded set of source spans. Trace attributes avoid event payloads and user supplied URLs. Pino JSON logs include `trace_id` and `span_id` while a span is active.
 
+AI insight provider calls use `livepulse.llm.generate` spans without prompt or telemetry attributes. Logs record only model, token counts, latency, and outcome. Prometheus exports request outcomes by insight kind, provider latency in milliseconds, and token totals by direction. The dashboard includes insight request results and p95 latency; alerts cover sustained degradation/error rates above 25% and p95 latency above 12 seconds. Do not add prompt or event text to traces, logs, or metric labels.
+
 ## Metrics and Grafana
 
 Use `backend/ops/prometheus.yml` as the scrape configuration. Run Prometheus on a network that can resolve `api:5000` and `worker:9464`, or change those targets to the service addresses in your environment. The worker listener is internal to the service network and is not published as a host port by Compose.

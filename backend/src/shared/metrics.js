@@ -101,6 +101,27 @@ const badgeCountRefreshes = new client.Counter({
   registers: [register],
 });
 
+const aiInsightRequests = new client.Counter({
+  name: "livepulse_ai_insight_requests_total",
+  help: "AI insight requests by kind and result",
+  labelNames: ["kind", "result"],
+  registers: [register],
+});
+
+const aiInsightLatency = new client.Histogram({
+  name: "livepulse_ai_insight_latency_ms",
+  help: "LLM insight latency in milliseconds",
+  buckets: [250, 500, 1000, 2500, 5000, 10000, 20000],
+  registers: [register],
+});
+
+const aiTokens = new client.Counter({
+  name: "livepulse_ai_tokens_total",
+  help: "LLM tokens used by direction",
+  labelNames: ["direction"],
+  registers: [register],
+});
+
 module.exports = {
   register,
   eventsAccepted,
@@ -117,4 +138,7 @@ module.exports = {
   httpRequestDuration,
   badgeRequests,
   badgeCountRefreshes,
+  aiInsightRequests,
+  aiInsightLatency,
+  aiTokens,
 };

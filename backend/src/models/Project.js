@@ -38,6 +38,9 @@ const ProjectSchema = new mongoose.Schema({
   },
   // Attribution only (attacker-writable). Set at FIRST project creation. Never attach rewards to this.
   referredBy: { type: String, default: null },
+  aiInsights: {
+    enabled: { type: Boolean, default: false },
+  },
   createdAt: {
     type: Date,
     default: Date.now,

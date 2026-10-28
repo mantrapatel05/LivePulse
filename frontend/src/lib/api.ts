@@ -14,6 +14,7 @@ export type LPProject = {
   analyticsBackend?: "mongo" | "dual" | "clickhouse";
   publicId?: string;
   badge?: BadgeSettings;
+  aiInsights?: { enabled: boolean };
   referredBy?: string | null;
   createdAt?: string;
 };
@@ -29,9 +30,13 @@ export type BadgeStats = {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  retryAfterSeconds?: number;
+  resetsAt?: string;
+  constructor(message: string, status: number, retryAfterSeconds?: number, resetsAt?: string) {
     super(message);
     this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
+    this.resetsAt = resetsAt;
   }
 }
 
@@ -119,6 +124,13 @@ export function updateBadge(projectId: string, patch: Partial<BadgeSettings>) {
     method: "PATCH",
     body: JSON.stringify(patch),
   }).then((r) => r.project);
+}
+
+export function updateAiInsights(projectId: string, enabled: boolean) {
+  return dashboardRequest<{ project: Pick<LPProject, "_id" | "aiInsights"> }>(
+    `/api/projects/${projectId}/ai-insights`,
+    { method: "PATCH", body: JSON.stringify({ enabled }) },
+  ).then((response) => response.project);
 }
 
 export function getBadgeStats(projectId: string) {

@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { LPProject } from "../../lib/api";
-import { analyticsV2, presetToRange, type DateRangePreset } from "../../lib/apiV2";
+import { ApiError } from "../../lib/api";
+import {
+  analyticsV2,
+  presetToRange,
+  type DateRangePreset,
+  type ErrorInsight,
+  type InsightResult,
+} from "../../lib/apiV2";
 import { API_URL } from "../../lib/config";
 import {
   getDashboardSocket,
@@ -34,7 +41,10 @@ export function ControlRoomV2({ project }: { project: LPProject }) {
       presetToRange(
         preset,
         customFrom && customTo
-          ? { from: new Date(customFrom).toISOString(), to: new Date(customTo).toISOString() }
+          ? {
+              from: new Date(customFrom).toISOString(),
+              to: new Date(customTo).toISOString(),
+            }
           : undefined,
       ),
     [preset, customFrom, customTo],
@@ -44,6 +54,16 @@ export function ControlRoomV2({ project }: { project: LPProject }) {
   const [openSessionId, setOpenSessionId] = useState<string | null>(null);
   const [stream, setStream] = useState<LiveEvent[]>([]);
   const [live, setLive] = useState(false);
+  const [clusterInsightState, setClusterInsightState] = useState<
+    Record<
+      string,
+      {
+        result?: InsightResult<ErrorInsight>;
+        error?: string;
+        loading?: boolean;
+      }
+    >
+  >({});
 
   const overview = usePolling(
     () => api.overview(range.from, range.to, TIMEZONE),
@@ -138,6 +158,45 @@ export function ControlRoomV2({ project }: { project: LPProject }) {
   const errorRows = errorClusters.data?.data ?? [];
   const sessionRows = sessionMode === "live" ? (liveSessions.data?.data ?? []) : [];
   const historicalRows = sessionMode === "historical" ? (historicalSessions.data?.data ?? []) : [];
+
+  async function explainCluster(signature: string) {
+    setClusterInsightState((current) => ({
+      ...current,
+      [signature]: { loading: true },
+    }));
+    try {
+      const response = await api.explainErrorCluster(signature, range.from, range.to, TIMEZONE);
+      if (!("data" in response)) {
+        setClusterInsightState((current) => ({
+          ...current,
+          [signature]: {
+            error: "This error is already being explained in another tab. Try again shortly.",
+          },
+        }));
+        return;
+      }
+      setClusterInsightState((current) => ({
+        ...current,
+        [signature]: { result: response.data },
+      }));
+    } catch (error) {
+      let message = error instanceof Error ? error.message : "Couldn't explain this error cluster.";
+      if (error instanceof ApiError && error.status === 403)
+        message = "AI insights are off. Enable them in Install settings.";
+      if (error instanceof ApiError && error.status === 409)
+        message = "Explain is available after this project is migrated to ClickHouse.";
+      if (error instanceof ApiError && error.status === 429)
+        message = error.retryAfterSeconds
+          ? `Rate limit reached. Try again in ${error.retryAfterSeconds} seconds.`
+          : error.resetsAt
+            ? `Daily limit reached. Resets at ${new Date(error.resetsAt).toLocaleTimeString()}.`
+            : "The AI insight limit has been reached. Try again later.";
+      setClusterInsightState((current) => ({
+        ...current,
+        [signature]: { error: message },
+      }));
+    }
+  }
 
   return (
     <div className="lp-room">
@@ -324,12 +383,43 @@ export function ControlRoomV2({ project }: { project: LPProject }) {
           ) : (
             <ul className="lp-errors">
               {errorRows.map((e) => (
-                <li key={e.signature}>
+                <li key={e.signature} className="lp-error-insight-row">
                   <b>{e.message || e.signature}</b>
                   <small>
                     ×{e.occurrences} affecting {e.affected_sessions} visitor
                     {e.affected_sessions === 1 ? "" : "s"}
                   </small>
+                  <button
+                    type="button"
+                    className="lp-btn-link"
+                    disabled={!!clusterInsightState[e.signature]?.loading}
+                    onClick={() => void explainCluster(e.signature)}
+                  >
+                    {clusterInsightState[e.signature]?.loading
+                      ? "explaining…"
+                      : clusterInsightState[e.signature]?.result
+                        ? "explain again"
+                        : "explain"}
+                  </button>
+                  {clusterInsightState[e.signature]?.loading && (
+                    <div
+                      className="lp-ai-loading"
+                      role="status"
+                      aria-label="Generating error insight"
+                    >
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  )}
+                  {clusterInsightState[e.signature]?.error && (
+                    <div className="lp-alert" role="alert">
+                      {clusterInsightState[e.signature]?.error}
+                    </div>
+                  )}
+                  {clusterInsightState[e.signature]?.result && (
+                    <ErrorInsightView result={clusterInsightState[e.signature]!.result!} />
+                  )}
                 </li>
               ))}
             </ul>
@@ -358,6 +448,32 @@ export function ControlRoomV2({ project }: { project: LPProject }) {
   );
 }
 
+function ErrorInsightView({ result }: { result: InsightResult<ErrorInsight> }) {
+  const insight = result.insight;
+  return (
+    <div className="lp-ai-insight lp-ai-error-insight" aria-live="polite">
+      <div className="lp-ai-result-meta">
+        <span className="lp-ai-tag">{insight.confidence} confidence</span>
+        {result.cached && <span className="lp-ai-tag">cached</span>}
+        {result.degraded && (
+          <span className="lp-ai-tag is-warn">basic summary · AI unavailable</span>
+        )}
+      </div>
+      <h4>{insight.summary}</h4>
+      <p>
+        <b>Likely cause</b> {insight.likelyCause}
+      </p>
+      <p>
+        <b>User impact</b> {insight.userImpact}
+      </p>
+      <p>
+        <b>Suggested fix</b> {insight.suggestedFix}
+      </p>
+      <small className="lp-ai-disclaimer">AI-generated. Verify against the timeline.</small>
+    </div>
+  );
+}
+
 function rangeLabel(preset: DateRangePreset): string {
   if (preset === "last_hour") return "last hour, hourly buckets";
   if (preset === "last_24h") return "24h, hourly buckets";
@@ -366,7 +482,13 @@ function rangeLabel(preset: DateRangePreset): string {
 }
 
 function healthDescription(
-  h: { redisOk: boolean; clickhouseOk: boolean; streamPendingCountProcessWide: number } | undefined,
+  h:
+    | {
+        redisOk: boolean;
+        clickhouseOk: boolean;
+        streamPendingCountProcessWide: number;
+      }
+    | undefined,
 ): string {
   if (!h) return "Health unknown — waiting for first check.";
   const parts = [

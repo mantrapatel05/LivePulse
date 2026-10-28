@@ -8,6 +8,7 @@ const {
   getEmbedSnippet,
 } = require("../controllers/projectController");
 const { updateBadgeSettings, getBadgeStats } = require("../controllers/badgeController");
+const { updateAiInsightsSettings } = require("../controllers/insightController");
 const { requireDashboardAuth } = require("../middleware/supabaseAuth");
 const { requireProjectOwnership } = require("../middleware/projectOwnership");
 const { dashboardRateLimit } = require("../middleware/dashboardRateLimit");
@@ -20,5 +21,6 @@ router.post("/:projectId/rotate-key", requireProjectOwnership, rotateProjectApiK
 router.get("/:projectId/embed", requireProjectOwnership, getEmbedSnippet);
 router.patch("/:projectId/badge", requireProjectOwnership, updateBadgeSettings);
 router.get("/:projectId/badge", requireProjectOwnership, getBadgeStats);
+router.patch("/:projectId/ai-insights", requireProjectOwnership, updateAiInsightsSettings);
 
 module.exports = router;

@@ -90,3 +90,23 @@ groups:
         annotations:
           summary: "Dashboard analytics query p95 latency exceeds 2.5s"
           description: "Analytics queries are slow (p95 latency {{ $value }}ms). Check ClickHouse load and materialized views."
+
+      - alert: LivePulseAiInsightDegradedHigh
+        expr: (sum(rate(livepulse_ai_insight_requests_total{result=~"degraded|error"}[10m])) / clamp_min(sum(rate(livepulse_ai_insight_requests_total[10m])), 0.001)) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+          service: livepulse-api
+        annotations:
+          summary: "AI insight degradation or errors exceed 25%"
+          description: "More than 25% of AI insight requests have degraded or errored over the last 10 minutes. Check provider availability and API configuration."
+
+      - alert: LivePulseAiInsightLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(livepulse_ai_insight_latency_ms_bucket[5m]))) > 12000
+        for: 10m
+        labels:
+          severity: warning
+          service: livepulse-api
+        annotations:
+          summary: "AI insight p95 latency exceeds 12 seconds"
+          description: "AI insight provider latency p95 is above 12 seconds. Check provider health and model response times."

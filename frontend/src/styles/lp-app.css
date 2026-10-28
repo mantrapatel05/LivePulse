@@ -1071,10 +1071,208 @@
   min-width: 62px;
 }
 
+/* AI insight, grounded in the timeline rather than presented as a second dashboard. */
+.lp-ai-section {
+  margin: 18px 0;
+  padding: 14px 0;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+}
+.lp-ai-actions,
+.lp-ai-settings,
+.lp-ai-result-meta,
+.lp-error-insight-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.lp-ai-privacy,
+.lp-ai-settings p {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.lp-ai-settings {
+  align-items: flex-start;
+}
+.lp-ai-settings > div {
+  max-width: 760px;
+}
+.lp-ai-settings-message {
+  display: block;
+  margin-top: 8px;
+  color: var(--ink-soft);
+}
+.lp-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.lp-toggle input {
+  accent-color: var(--signal);
+  width: 16px;
+  height: 16px;
+}
+.lp-ai-insight {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-left: 2px solid var(--signal);
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
+}
+.lp-ai-insight h4 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 500;
+}
+.lp-ai-insight p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.lp-ai-result-meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+.lp-ai-tag,
+.lp-ai-friction-kind {
+  display: inline-flex;
+  width: fit-content;
+  padding: 2px 6px;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.lp-ai-tag.is-warn {
+  border-color: var(--amber);
+}
+.lp-ai-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lp-ai-detail ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+}
+.lp-ai-detail li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+.lp-ai-evidence {
+  display: inline-flex;
+  gap: 5px;
+}
+.lp-ai-evidence button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--pulse);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.lp-ai-disclaimer {
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 9px;
+}
+.lp-ai-loading {
+  display: flex;
+  gap: 6px;
+  padding: 14px 0;
+}
+.lp-ai-loading span {
+  display: block;
+  width: 76%;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--bone-2);
+  animation: lp-ai-pulse 900ms ease-in-out infinite alternate;
+}
+.lp-ai-loading span:nth-child(2) {
+  width: 58%;
+  animation-delay: 150ms;
+}
+.lp-ai-loading span:nth-child(3) {
+  width: 68%;
+  animation-delay: 300ms;
+}
+@keyframes lp-ai-pulse {
+  from {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+}
+.lp-timeline li.is-evidence {
+  background: var(--pulse-dim);
+  outline: 1px solid var(--pulse);
+  outline-offset: 2px;
+}
+.lp-chip.lp-outcome-converted i,
+.lp-chip.lp-outcome-engaged i {
+  background: var(--signal);
+}
+.lp-chip.lp-outcome-bounced i,
+.lp-chip.lp-outcome-frustrated i {
+  background: var(--pulse);
+}
+.lp-chip.lp-outcome-unclear i {
+  background: var(--amber);
+}
+.lp-errors .lp-error-insight-row {
+  align-items: flex-start;
+}
+.lp-error-insight-head {
+  width: 100%;
+  align-items: flex-start;
+}
+.lp-ai-error-insight {
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px;
+}
+@media (max-width: 640px) {
+  .lp-ai-actions,
+  .lp-ai-settings {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .lp-ai-actions .lp-btn {
+    align-self: flex-start;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lp-modal,
   .lp-range-control button,
-  .lp-mode-toggle button {
+  .lp-mode-toggle button,
+  .lp-ai-loading span {
     transition: none !important;
+    animation: none !important;
   }
 }

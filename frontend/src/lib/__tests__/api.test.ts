@@ -15,6 +15,7 @@ import {
   recordLandingHit,
   rotateKey,
   updateBadge,
+  updateAiInsights,
 } from "../api";
 import { captureReferralFromUrl, peekReferral } from "../referral";
 
@@ -94,7 +95,11 @@ describe("dashboard API client", () => {
 
   it("getEmbedSnippet hits the per-project embed endpoint", async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
-      jsonResponse({ snippet: "<script></script>", backendOrigin: "http://x", apiKey: "lp_1" }),
+      jsonResponse({
+        snippet: "<script></script>",
+        backendOrigin: "http://x",
+        apiKey: "lp_1",
+      }),
     );
     await getEmbedSnippet("proj-9");
     const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -102,12 +107,26 @@ describe("dashboard API client", () => {
   });
 
   it("PATCHes badge settings and returns the updated project", async () => {
-    const project = { _id: "proj-1", name: "Acme", badge: { enabled: true, minCount: 5 } };
+    const project = {
+      _id: "proj-1",
+      name: "Acme",
+      badge: { enabled: true, minCount: 5 },
+    };
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(jsonResponse({ project }));
 
     await expect(updateBadge("proj-1", { enabled: true })).resolves.toEqual(project);
     const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toContain("/api/projects/proj-1/badge");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body)).toEqual({ enabled: true });
+  });
+
+  it("PATCHes the per-project AI insight opt-in", async () => {
+    const project = { _id: "proj-1", aiInsights: { enabled: true } };
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(jsonResponse({ project }));
+    await expect(updateAiInsights("proj-1", true)).resolves.toEqual(project);
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/api/projects/proj-1/ai-insights");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body)).toEqual({ enabled: true });
   });
@@ -131,7 +150,10 @@ describe("dashboard API client", () => {
 
     await createProject("Acme");
     const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(JSON.parse(init.body)).toEqual({ name: "Acme", referredBy: publicId });
+    expect(JSON.parse(init.body)).toEqual({
+      name: "Acme",
+      referredBy: publicId,
+    });
     expect(peekReferral()).toBeNull();
   });
 

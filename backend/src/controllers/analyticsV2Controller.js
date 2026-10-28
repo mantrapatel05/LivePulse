@@ -21,9 +21,9 @@ function clickhouseDateTime(value) {
   return new Date(value).toISOString().replace("T", " ").replace("Z", "");
 }
 
-function parseRange(req, res) {
-  const { from, to } = req.query;
-  const timezone = req.query.timezone || DEFAULT_TIMEZONE;
+function parseRange(req, res, source = req.query) {
+  const { from, to } = source;
+  const timezone = source.timezone || DEFAULT_TIMEZONE;
   const fromMs = Date.parse(from);
   const toMs = Date.parse(to);
   if (!from || !to || !Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
@@ -241,4 +241,7 @@ module.exports = {
   getSessions,
   getSessionTimeline,
   getProjectHealth,
+  parseRange,
+  clickhouseOnly,
+  respond,
 };

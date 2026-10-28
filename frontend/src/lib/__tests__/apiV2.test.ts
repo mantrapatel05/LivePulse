@@ -10,9 +10,10 @@ import { analyticsV2, presetToRange } from "../apiV2";
 function mockAuthedSupabase() {
   (getSupabase as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
     auth: {
-      getSession: vi
-        .fn()
-        .mockResolvedValue({ data: { session: { access_token: "tok" } }, error: null }),
+      getSession: vi.fn().mockResolvedValue({
+        data: { session: { access_token: "tok" } },
+        error: null,
+      }),
     },
   });
 }
@@ -41,7 +42,10 @@ describe("presetToRange", () => {
   });
 
   it("custom uses the exact caller-provided bounds", () => {
-    const custom = { from: "2026-01-01T00:00:00.000Z", to: "2026-01-02T00:00:00.000Z" };
+    const custom = {
+      from: "2026-01-01T00:00:00.000Z",
+      to: "2026-01-02T00:00:00.000Z",
+    };
     expect(presetToRange("custom", custom)).toEqual(custom);
   });
 });
@@ -109,6 +113,26 @@ describe("analyticsV2 endpoint mapping", () => {
     await api.overview(from, to, tz);
     const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(init.headers.Authorization).toBe("Bearer tok");
+  });
+
+  it("POSTs session and error-cluster insights with the Bearer token and range body", async () => {
+    await api.explainSession("session/one");
+    let [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/sessions/session%2Fone/insight");
+    expect(init.method).toBe("POST");
+    expect(init.headers.Authorization).toBe("Bearer tok");
+
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockClear();
+    await api.explainErrorCluster("TypeError #", from, to, tz);
+    [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/error-clusters/insight");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({
+      signature: "TypeError #",
+      from,
+      to,
+      timezone: tz,
+    });
   });
 
   it("propagates the backend's error message on a non-2xx response", async () => {

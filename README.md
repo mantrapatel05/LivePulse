@@ -219,6 +219,12 @@ For deployment, deploy the backend schema first, run `cd backend && npm run back
 
 The API trusts one proxy hop (`trust proxy = 1`), so that hop count must match the real proxy chain. If a CDN sits in front of that proxy, all requests may resolve to one IP; verify client IPs after deployment. Impressions are a rough hint because CDNs cache most badge image requests. Landing hits and first-project `referredBy` attribution measure the referral funnel more directly. `referredBy` is attacker-writable and is for measurement only; never attach rewards to it.
 
+## AI Session Insights
+
+AI Insights are opt-in per project and off by default. From a ClickHouse-backed session timeline, choose **Explain session**; from an error cluster, choose **Explain**. The service builds a short, scrubbed summary from event types, page paths, timestamps, selected numeric properties, and truncated error messages. It never sends user IDs, IP addresses, chat messages, full properties, or client context. Error-cluster explanations may include up to five similarly scrubbed session summaries. The chosen third-party model provider (OpenRouter by default, through an OpenAI-compatible endpoint) receives this telemetry when you request an explanation; provider privacy, logging, and retention policies apply.
+
+Configure `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, and `LLM_TIMEOUT_MS` in the backend environment. Leave the key/model unset to disable generation; the API continues to boot and returns a clear unavailable response. Per-user and per-project minute limits plus `AI_INSIGHT_DAILY_CALLS_PER_PROJECT` bound usage. Identical insights are cached for 10 minutes for live sessions and 7 days for ended sessions. Provider errors or malformed model output return a deterministic, telemetry-only summary. Turn the feature off at any time in project install settings; the project toggle defaults off.
+
 ## Known limitations
 
 - Dashboard reads still use Mongo for `dual` projects until cutover.

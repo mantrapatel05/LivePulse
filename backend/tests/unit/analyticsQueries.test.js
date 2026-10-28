@@ -9,6 +9,8 @@ const {
   buildHistoricalSessionsQuery,
   buildSessionSummaryQuery,
   buildSessionTimelineEventsQuery,
+  buildErrorClusterInsightQuery,
+  buildErrorClusterRepresentativeSessionsQuery,
 } = require("../../src/shared/analyticsQueries");
 
 const range = { projectId: "p1", from: "2026-01-01 00:00:00", to: "2026-01-02 00:00:00" };
@@ -120,6 +122,23 @@ describe("analyticsQueries builders", () => {
     expect(query_params.startedAt).toBe("2026-01-01 10:00:00");
   });
 
+  it("errorClusterInsight: binds the signature and bounds it to the requested project range", () => {
+    const input = { ...range, signature: "TypeError #" };
+    const built = buildErrorClusterInsightQuery(input);
+    expect(built.query).toContain("WHERE signature = {signature:String}");
+    expect(built.query).toContain("event_type = 'error'");
+    expect(built.query).not.toContain(input.signature);
+    expect(built.query_params).toEqual(input);
+  });
+
+  it("errorClusterRepresentativeSessions: returns a bounded set of sessions for the selected signature", () => {
+    const input = { ...range, signature: "TypeError #", limit: 5 };
+    const built = buildErrorClusterRepresentativeSessionsQuery(input);
+    expect(built.query).toContain("GROUP BY session_id");
+    expect(built.query).toContain("LIMIT {limit:UInt32}");
+    expect(built.query_params).toEqual(input);
+  });
+
   it("every builder returns only real ClickHouse param placeholders that appear in query_params", () => {
     const builders = [
       buildOverviewQuery(range),
@@ -137,6 +156,8 @@ describe("analyticsQueries builders", () => {
         startedAt: range.from,
         lastSeenAt: range.to,
       }),
+      buildErrorClusterInsightQuery({ ...range, signature: "sig" }),
+      buildErrorClusterRepresentativeSessionsQuery({ ...range, signature: "sig", limit: 5 }),
     ];
     for (const { query, query_params } of builders) {
       const placeholders = [...query.matchAll(/\{(\w+):/g)].map((m) => m[1]);

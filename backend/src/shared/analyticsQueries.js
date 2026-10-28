@@ -210,6 +210,63 @@ function buildSessionTimelineEventsQuery({ projectId, sessionId, startedAt, last
   };
 }
 
+function buildErrorClusterInsightQuery({ projectId, from, to, signature }) {
+  return {
+    query: `
+      SELECT
+        signature,
+        any(message) AS message,
+        count() AS occurrences,
+        uniqExact(session_id) AS affected_sessions,
+        max(occurred_at) AS last_seen
+      FROM (
+        SELECT
+          session_id,
+          occurred_at,
+          JSONExtractString(properties, 'message') AS message,
+          replaceRegexpAll(
+            replaceRegexpAll(JSONExtractString(properties, 'message'), '0x[0-9a-fA-F]+|[0-9]+', '#'),
+            '''[^'']*''|"[^"]*"', '<val>'
+          ) AS signature
+        FROM events_v2
+        WHERE project_id = {projectId:String}
+          AND event_type = 'error'
+          AND occurred_at >= {from:DateTime64(3)}
+          AND occurred_at < {to:DateTime64(3)}
+      )
+      WHERE signature = {signature:String}
+      GROUP BY signature
+      LIMIT 1
+    `,
+    query_params: { projectId, from, to, signature },
+  };
+}
+
+function buildErrorClusterRepresentativeSessionsQuery({ projectId, from, to, signature, limit = 5 }) {
+  return {
+    query: `
+      SELECT session_id, max(occurred_at) AS last_seen_at
+      FROM (
+        SELECT session_id, occurred_at, event_type, url, properties,
+          replaceRegexpAll(
+            replaceRegexpAll(JSONExtractString(properties, 'message'), '0x[0-9a-fA-F]+|[0-9]+', '#'),
+            '''[^'']*''|"[^"]*"', '<val>'
+          ) AS signature
+        FROM events_v2
+        WHERE project_id = {projectId:String}
+          AND event_type = 'error'
+          AND occurred_at >= {from:DateTime64(3)}
+          AND occurred_at < {to:DateTime64(3)}
+      )
+      WHERE signature = {signature:String}
+      GROUP BY session_id
+      ORDER BY last_seen_at DESC
+      LIMIT {limit:UInt32}
+    `,
+    query_params: { projectId, from, to, signature, limit },
+  };
+}
+
 async function runQuery({ query, query_params }, endpointLabel) {
   const client = getClickhouseClient();
   const end = queryLatency.startTimer({ endpoint: endpointLabel });
@@ -238,5 +295,7 @@ module.exports = {
   buildHistoricalSessionsQuery,
   buildSessionSummaryQuery,
   buildSessionTimelineEventsQuery,
+  buildErrorClusterInsightQuery,
+  buildErrorClusterRepresentativeSessionsQuery,
   runQuery,
 };
