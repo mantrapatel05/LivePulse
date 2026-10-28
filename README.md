@@ -219,6 +219,14 @@ For deployment, deploy the backend schema first, run `cd backend && npm run back
 
 The API trusts one proxy hop (`trust proxy = 1`), so that hop count must match the real proxy chain. If a CDN sits in front of that proxy, all requests may resolve to one IP; verify client IPs after deployment. Impressions are a rough hint because CDNs cache most badge image requests. Landing hits and first-project `referredBy` attribution measure the referral funnel more directly. `referredBy` is attacker-writable and is for measurement only; never attach rewards to it.
 
+## Engagement Drop Detection
+
+The V2 dashboard compares each project's latest rolling 7 days with the 7 days before them. It reports session, event, engagement-time, rage-click, and error-rate changes, plus the pages with the largest page-view declines. This is a deterministic project-level trend signal, not a per-user churn prediction or an ML model.
+
+The API derives both windows on the server, requires the project to be on the ClickHouse analytics backend, and caches results in Redis for 5 minutes. To avoid noisy alerts, it reports insufficient data until the prior window has at least `ENGAGEMENT_MIN_PREV_SESSIONS` sessions (default `30`); page declines require `ENGAGEMENT_MIN_PAGE_VIEWS` views (default `20`). Session drops at or below `ENGAGEMENT_WATCH_PCT` (default `-20`) are marked watch; drops at or below `ENGAGEMENT_DROP_PCT` (default `-40`) are marked dropping. A relative error-rate increase greater than 50% also marks watch. Zero baselines produce no percentage.
+
+The defaults can be tuned with `ENGAGEMENT_MIN_PREV_SESSIONS`, `ENGAGEMENT_MIN_PAGE_VIEWS`, `ENGAGEMENT_WATCH_PCT`, and `ENGAGEMENT_DROP_PCT`. Requests are measured by `livepulse_engagement_drift_requests_total{status}`; ClickHouse calls use the existing query-latency metric with `v2_drift_*` endpoint labels.
+
 ## AI Session Insights
 
 AI Insights are opt-in per project and off by default. From a ClickHouse-backed session timeline, choose **Explain session**; from an error cluster, choose **Explain**. The service builds a short, scrubbed summary from event types, page paths, timestamps, selected numeric properties, and truncated error messages. It never sends user IDs, IP addresses, chat messages, full properties, or client context. Error-cluster explanations may include up to five similarly scrubbed session summaries. The chosen third-party model provider (OpenRouter by default, through an OpenAI-compatible endpoint) receives this telemetry when you request an explanation; provider privacy, logging, and retention policies apply.

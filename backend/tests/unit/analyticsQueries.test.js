@@ -3,6 +3,8 @@ const {
   buildTodayVisitorsQuery,
   buildTimeseriesQuery,
   buildTopPagesQuery,
+  buildEngagementWindowQuery,
+  buildPageDeltaQuery,
   buildEventBreakdownQuery,
   buildErrorClustersQuery,
   buildErrorClustersRangeQuery,
@@ -71,6 +73,33 @@ describe("analyticsQueries builders", () => {
 
   it("topPages: defaults limit to 10 when not provided", () => {
     expect(buildTopPagesQuery(range).query_params.limit).toBe(10);
+  });
+
+  it("engagementWindow: scopes session and engagement counts to one bound interval", () => {
+    const input = { projectId: "p1", from: range.from, to: range.to };
+    const { query, query_params } = buildEngagementWindowQuery(input);
+    expect(query).toContain("FROM events_v2");
+    expect(query).toContain("uniqExact(session_id)");
+    expect(query).toContain("event_type = 'rage_click'");
+    expect(query).toContain("avg_engaged_seconds");
+    expect(query).not.toContain(input.projectId);
+    expect(query_params).toEqual(input);
+  });
+
+  it("pageDelta: counts current and previous page views in one bound scan", () => {
+    const input = {
+      projectId: "p1",
+      curFrom: "2026-01-08 00:00:00",
+      curTo: "2026-01-15 00:00:00",
+      prevFrom: "2026-01-01 00:00:00",
+      prevTo: "2026-01-08 00:00:00",
+      limit: 50,
+    };
+    const { query, query_params } = buildPageDeltaQuery(input);
+    expect(query).toContain("countIf");
+    expect(query).toContain("url_path AS path");
+    expect(query).toContain("event_type = 'page_view'");
+    expect(query_params).toEqual(input);
   });
 
   it("eventBreakdown: reads the minute aggregate, grouped by event_type", () => {
@@ -145,6 +174,14 @@ describe("analyticsQueries builders", () => {
       buildTodayVisitorsQuery({ projectId: "p1", from: range.from }),
       buildTimeseriesQuery(range),
       buildTopPagesQuery(range),
+      buildEngagementWindowQuery({ ...range }),
+      buildPageDeltaQuery({
+        projectId: "p1",
+        curFrom: range.from,
+        curTo: range.to,
+        prevFrom: range.from,
+        prevTo: range.to,
+      }),
       buildEventBreakdownQuery(range),
       buildErrorClustersQuery({ projectId: "p1", from: range.from }),
       buildErrorClustersRangeQuery(range),

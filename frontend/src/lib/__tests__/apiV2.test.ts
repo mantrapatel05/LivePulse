@@ -95,6 +95,7 @@ describe("analyticsV2 endpoint mapping", () => {
       "/api/v2/projects/proj-1/sessions/sess-1/timeline",
     ],
     ["health", () => api.health(), "/api/v2/projects/proj-1/health"],
+    ["engagementDrift", () => api.engagementDrift(), "/api/v2/projects/proj-1/engagement-drift"],
   ])("%s calls the correct v2 path", async (_label, call, expectedPath) => {
     await call();
     const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];

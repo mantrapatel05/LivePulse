@@ -71,6 +71,26 @@ export type ProjectHealthV2 = {
   liveNow: number;
 };
 
+export type EngagementDriftMetric = {
+  name: "sessions" | "events" | "avg_engaged_seconds" | "rage_clicks" | "error_rate";
+  cur: number;
+  prev: number;
+  deltaPct: number | null;
+};
+export type EngagementDriftPage = {
+  path: string;
+  cur: number;
+  prev: number;
+  deltaPct: number | null;
+};
+export type EngagementDrift = {
+  status: "ok" | "watch" | "drop" | "insufficient_data";
+  metrics: EngagementDriftMetric[];
+  topDecliners: EngagementDriftPage[];
+  summary: string;
+  cached: boolean;
+};
+
 export type SessionInsight = {
   headline: string;
   narrative: string;
@@ -216,5 +236,7 @@ export function analyticsV2(projectId: string) {
       ),
 
     health: () => v2Request<Envelope<ProjectHealthV2>>(`${base}/health`),
+
+    engagementDrift: () => v2Request<Envelope<EngagementDrift>>(`${base}/engagement-drift`),
   };
 }

@@ -83,6 +83,44 @@ function buildTopPagesQuery({ projectId, from, to, limit = 10 }) {
   };
 }
 
+function buildEngagementWindowQuery({ projectId, from, to }) {
+  return {
+    query: `
+      SELECT
+        uniqExact(session_id) AS sessions,
+        count() AS events,
+        countIf(event_type = 'error') AS errors,
+        avgIf(JSONExtract(properties, 'seconds', 'Nullable(Float64)'), event_type = 'time_on_page') AS avg_engaged_seconds,
+        countIf(event_type = 'rage_click') AS rage_clicks
+      FROM events_v2
+      WHERE project_id = {projectId:String}
+        AND occurred_at >= {from:DateTime64(3)}
+        AND occurred_at < {to:DateTime64(3)}
+    `,
+    query_params: { projectId, from, to },
+  };
+}
+
+function buildPageDeltaQuery({ projectId, curFrom, curTo, prevFrom, prevTo, limit = 50 }) {
+  return {
+    query: `
+      SELECT
+        url_path AS path,
+        countIf(occurred_at >= {curFrom:DateTime64(3)} AND occurred_at < {curTo:DateTime64(3)}) AS cur,
+        countIf(occurred_at >= {prevFrom:DateTime64(3)} AND occurred_at < {prevTo:DateTime64(3)}) AS prev
+      FROM events_v2
+      WHERE project_id = {projectId:String}
+        AND event_type = 'page_view'
+        AND occurred_at >= {prevFrom:DateTime64(3)}
+        AND occurred_at < {curTo:DateTime64(3)}
+      GROUP BY path
+      ORDER BY prev DESC
+      LIMIT {limit:UInt32}
+    `,
+    query_params: { projectId, curFrom, curTo, prevFrom, prevTo, limit },
+  };
+}
+
 function buildEventBreakdownQuery({ projectId, from, to }) {
   return {
     query: `
@@ -289,6 +327,8 @@ module.exports = {
   buildTodayVisitorsQuery,
   buildTimeseriesQuery,
   buildTopPagesQuery,
+  buildEngagementWindowQuery,
+  buildPageDeltaQuery,
   buildEventBreakdownQuery,
   buildErrorClustersQuery,
   buildErrorClustersRangeQuery,

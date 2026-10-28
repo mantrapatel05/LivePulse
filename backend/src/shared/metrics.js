@@ -122,6 +122,13 @@ const aiTokens = new client.Counter({
   registers: [register],
 });
 
+const engagementDriftRequests = new client.Counter({
+  name: "livepulse_engagement_drift_requests_total",
+  help: "Engagement drift requests by resulting status",
+  labelNames: ["status"],
+  registers: [register],
+});
+
 module.exports = {
   register,
   eventsAccepted,
@@ -141,4 +148,5 @@ module.exports = {
   aiInsightRequests,
   aiInsightLatency,
   aiTokens,
+  engagementDriftRequests,
 };

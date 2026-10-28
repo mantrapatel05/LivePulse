@@ -20,6 +20,7 @@ import { Bars, Empty, Panel, Spark, Stat } from "./Panel";
 import { ChatDock } from "./ChatDock";
 import { InstallPanel } from "./ControlRoom";
 import { SessionTimelineDialog } from "./SessionTimelineDialog";
+import { EngagementPanel } from "./EngagementPanel";
 
 const TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 const PRESETS: { key: DateRangePreset; label: string }[] = [
@@ -91,6 +92,7 @@ export function ControlRoomV2({ project }: { project: LPProject }) {
     20000,
   );
   const health = usePolling(() => api.health(), [api], 15000);
+  const engagementDrift = usePolling(() => api.engagementDrift(), [api], 60000);
 
   const liveSessions = usePolling(() => api.activeSessions(), [api], 8000);
   const historicalSessions = usePolling(
@@ -361,6 +363,12 @@ export function ControlRoomV2({ project }: { project: LPProject }) {
             <Bars rows={pageRows} />
           )}
         </Panel>
+
+        <EngagementPanel
+          drift={engagementDrift.data?.data}
+          loading={engagementDrift.loading}
+          error={engagementDrift.error}
+        />
 
         <Panel label="events over time" title={rangeLabel(preset)} className="span-4">
           <div className="lp-spark-wrap">
