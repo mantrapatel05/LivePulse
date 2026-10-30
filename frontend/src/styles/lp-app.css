@@ -1105,6 +1105,22 @@
   margin-top: 8px;
   color: var(--ink-soft);
 }
+.lp-ask-form {
+  display: flex;
+  gap: 8px;
+}
+.lp-ask-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 10px;
+}
+.lp-ask-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
 .lp-toggle {
   display: inline-flex;
   align-items: center;
@@ -1260,6 +1276,10 @@
   .lp-ai-actions,
   .lp-ai-settings {
     align-items: flex-start;
+    flex-direction: column;
+  }
+  .lp-ask-form {
+    align-items: stretch;
     flex-direction: column;
   }
   .lp-ai-actions .lp-btn {

@@ -120,6 +120,28 @@ export type InsightResult<T> = {
 };
 export type PendingInsightResponse = { status: "pending" };
 
+export type NlqColumn = { key: string; label: string; type: "text" | "number" | "time" };
+export type NlqSpec = {
+  metric: string;
+  groupBy: string | null;
+  filters: { field: string; op: string; value: string }[];
+  range: string;
+  orderBy: string;
+  limit: number;
+};
+export type NlqRow = { label?: string; value: number | null };
+export type NlqResult =
+  | {
+      status: "ok";
+      interpreted: string;
+      spec: NlqSpec;
+      columns: NlqColumn[];
+      rows: NlqRow[];
+      truncated: boolean;
+      cached: boolean;
+    }
+  | { status: "unsupported" | "unavailable" | "too_heavy"; message: string };
+
 export type DateRangePreset = "last_hour" | "last_24h" | "last_7d" | "custom";
 
 export function presetToRange(
@@ -234,6 +256,12 @@ export function analyticsV2(projectId: string) {
           body: JSON.stringify({ signature, from, to, timezone }),
         },
       ),
+
+    ask: (question: string) =>
+      v2Request<Envelope<NlqResult> | PendingInsightResponse>(`${base}/ask`, {
+        method: "POST",
+        body: JSON.stringify({ question }),
+      }),
 
     health: () => v2Request<Envelope<ProjectHealthV2>>(`${base}/health`),
 

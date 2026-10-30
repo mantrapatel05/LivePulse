@@ -14,6 +14,7 @@ const {
   getProjectHealth,
 } = require("../controllers/analyticsV2Controller");
 const { explainSession, explainErrorCluster } = require("../controllers/insightController");
+const { askAnalytics } = require("../controllers/nlqController");
 const { getEngagementDrift } = require("../controllers/engagementController");
 
 router.use(requireDashboardAuth, dashboardRateLimit);
@@ -30,5 +31,6 @@ router.get("/:projectId/health", getProjectHealth);
 router.get("/:projectId/engagement-drift", getEngagementDrift);
 router.post("/:projectId/sessions/:sessionId/insight", explainSession);
 router.post("/:projectId/error-clusters/insight", explainErrorCluster);
+router.post("/:projectId/ask", askAnalytics);
 
 module.exports = router;

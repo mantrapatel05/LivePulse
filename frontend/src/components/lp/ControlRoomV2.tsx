@@ -21,6 +21,7 @@ import { ChatDock } from "./ChatDock";
 import { InstallPanel } from "./ControlRoom";
 import { SessionTimelineDialog } from "./SessionTimelineDialog";
 import { EngagementPanel } from "./EngagementPanel";
+import { AskPanel } from "./AskPanel";
 
 const TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 const PRESETS: { key: DateRangePreset; label: string }[] = [
@@ -442,6 +443,7 @@ export function ControlRoomV2({ project }: { project: LPProject }) {
           <ChatDock projectId={pid} sessionId={openSessionId} />
         </Panel>
 
+        <AskPanel projectId={pid} />
         <InstallPanel project={project} />
       </div>
 

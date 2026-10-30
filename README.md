@@ -243,6 +243,16 @@ Opt in per ClickHouse-backed project; it is off by default. Each Monday from 09:
 
 Configure `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, and `LLM_TIMEOUT_MS` in the backend environment. Leave the key/model unset to disable generation; the API continues to boot and returns a clear unavailable response. Per-user and per-project minute limits plus `AI_INSIGHT_DAILY_CALLS_PER_PROJECT` bound usage. Identical insights are cached for 10 minutes for live sessions and 7 days for ended sessions. Provider errors or malformed model output return a deterministic, telemetry-only summary. Turn the feature off at any time in project install settings; the project toggle defaults off.
 
+## Ask your analytics (natural-language queries)
+
+Ask is opt-in through the same per-project AI toggle as session insights. Try questions such as “rage clicks on mobile last week”; the dashboard shows the result with an **Understood as** line for you to check.
+
+- The model receives only your sanitized question and a static description of allowed query options. It receives no event data, URLs, previous results, or user identifiers.
+- The model selects from fixed metrics, groupings, filters, time ranges, ordering, and result limits. It never writes SQL, chooses tables or columns, supplies project IDs, or provides dates.
+- Unsupported requests return a friendly message and run no query. Filter values are bound as parameters, and server-side project scope and UTC time windows are always applied.
+- Queries are capped by `NLQ_MAX_EXECUTION_SECONDS` and `NLQ_MAX_ROWS_TO_READ`. Per-user and per-project minute limits and `NLQ_DAILY_CALLS_PER_PROJECT` bound model usage; the one-hour spec cache avoids repeat model calls while each query runs fresh.
+- Disable it by turning off AI insights in the project’s Install settings or leaving `LLM_API_KEY` unset.
+
 ## Known limitations
 
 - Dashboard reads still use Mongo for `dual` projects until cutover.

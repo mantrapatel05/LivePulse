@@ -136,6 +136,13 @@ const digestSends = new client.Counter({
   registers: [register],
 });
 
+const nlqRequests = new client.Counter({
+  name: "livepulse_nlq_requests_total",
+  help: "Natural-language query requests by result",
+  labelNames: ["result"],
+  registers: [register],
+});
+
 module.exports = {
   register,
   eventsAccepted,
@@ -157,4 +164,5 @@ module.exports = {
   aiTokens,
   engagementDriftRequests,
   digestSends,
+  nlqRequests,
 };

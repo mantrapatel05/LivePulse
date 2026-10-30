@@ -305,7 +305,7 @@ function buildErrorClusterRepresentativeSessionsQuery({ projectId, from, to, sig
   };
 }
 
-async function runQuery({ query, query_params }, endpointLabel) {
+async function runQuery({ query, query_params, clickhouse_settings }, endpointLabel) {
   const client = getClickhouseClient();
   const end = queryLatency.startTimer({ endpoint: endpointLabel });
   try {
@@ -313,7 +313,12 @@ async function runQuery({ query, query_params }, endpointLabel) {
       "livepulse.clickhouse.query",
       { "db.system": "clickhouse", "livepulse.analytics.endpoint": endpointLabel },
       async () => {
-        const result = await client.query({ query, query_params, format: "JSONEachRow" });
+        const result = await client.query({
+          query,
+          query_params,
+          format: "JSONEachRow",
+          ...(clickhouse_settings ? { clickhouse_settings } : {}),
+        });
         return result.json();
       },
     );

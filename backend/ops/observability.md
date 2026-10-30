@@ -14,6 +14,10 @@ AI insight provider calls use `livepulse.llm.generate` spans without prompt or t
 
 `digestWorker.js` is a separate process. It ticks every 60 seconds and sends on Monday from 09:00 UTC, once per project per ISO week. It exposes `/metrics` on `DIGEST_METRICS_PORT` (default 9465), protected by the same `METRICS_TOKEN`. `livepulse_digest_sends_total{result=sent|skipped|failed|duplicate}` counts outcomes; `LivePulseDigestSendFailures` alerts on repeated failures. Logs contain project id, week, error name, and HTTP status only; provider response bodies and error messages are never logged.
 
+## Ask your analytics (NLQ)
+
+`POST /api/v2/projects/:id/ask` translates a question into an enum-only spec, validates it, compiles it from server-side lookup tables with bound parameters, and runs it with `max_execution_time` and `max_rows_to_read` limits. Metrics use `livepulse_nlq_requests_total{result}`; ClickHouse latency uses `livepulse_query_latency_ms{endpoint="v2_nlq"}`. Logs contain outcome, latency, and validated metric/group/range only; they omit question text and filter values.
+
 ## Metrics and Grafana
 
 Use `backend/ops/prometheus.yml` as the scrape configuration. Run Prometheus on a network that can resolve `api:5000`, `worker:9464`, and `digest:9465`, or change those targets to the service addresses in your environment. Worker and digest listeners are internal to the service network and are not published as host ports by Compose.

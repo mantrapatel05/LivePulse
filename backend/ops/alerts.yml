@@ -120,3 +120,14 @@ groups:
         annotations:
           summary: "Weekly digest sends are failing"
           description: "More than 3 digest sends failed in the last hour. Check EMAIL_API_KEY, the sender domain and provider status."
+
+      - alert: LivePulseNlqInvalidSpecHigh
+        expr: |
+          (sum(rate(livepulse_nlq_requests_total{result="invalid_spec"}[15m]))
+            / clamp_min(sum(rate(livepulse_nlq_requests_total[15m])), 0.001)) > 0.3
+          and sum(increase(livepulse_nlq_requests_total[15m])) > 10
+        for: 15m
+        labels: { severity: warning, service: livepulse-api }
+        annotations:
+          summary: "More than 30% of natural-language questions produce an invalid spec"
+          description: "The model is returning specs that fail validation. Check LLM_MODEL, the translation prompt, and provider health."
