@@ -8,7 +8,10 @@ export function DigestSettings({ project }: { project: LPProject }) {
   const [message, setMessage] = useState<string | null>(null);
   const available = project.analyticsBackend === "clickhouse";
 
-  useEffect(() => setEnabled(project.digest?.enabled === true), [project._id, project.digest?.enabled]);
+  useEffect(
+    () => setEnabled(project.digest?.enabled === true),
+    [project._id, project.digest?.enabled],
+  );
 
   async function change(next: boolean) {
     setBusy(true);
@@ -35,7 +38,11 @@ export function DigestSettings({ project }: { project: LPProject }) {
             this project, a short AI-written note is added, based only on those numbers.
             {!available && " Available after this project is migrated to ClickHouse."}
           </p>
-          {message && <small className="lp-ai-settings-message" role="status">{message}</small>}
+          {message && (
+            <small className="lp-ai-settings-message" role="status">
+              {message}
+            </small>
+          )}
         </div>
         <label className="lp-toggle">
           <span>{enabled ? "enabled" : "off"}</span>

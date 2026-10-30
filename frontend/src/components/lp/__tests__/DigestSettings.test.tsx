@@ -14,7 +14,16 @@ describe("DigestSettings", () => {
 
   it("persists the opt-in", async () => {
     mockUpdateDigest.mockResolvedValue({ _id: "p1", digest: { enabled: true } });
-    render(<DigestSettings project={{ _id: "p1", name: "Site", analyticsBackend: "clickhouse", digest: { enabled: false } }} />);
+    render(
+      <DigestSettings
+        project={{
+          _id: "p1",
+          name: "Site",
+          analyticsBackend: "clickhouse",
+          digest: { enabled: false },
+        }}
+      />,
+    );
     fireEvent.click(screen.getByRole("checkbox", { name: "Enable weekly digest" }));
     await waitFor(() => expect(mockUpdateDigest).toHaveBeenCalledWith("p1", true));
     expect(await screen.findByText("Weekly digest enabled.")).toBeTruthy();
