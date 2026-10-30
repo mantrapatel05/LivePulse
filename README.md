@@ -231,6 +231,16 @@ The defaults can be tuned with `ENGAGEMENT_MIN_PREV_SESSIONS`, `ENGAGEMENT_MIN_P
 
 AI Insights are opt-in per project and off by default. From a ClickHouse-backed session timeline, choose **Explain session**; from an error cluster, choose **Explain**. The service builds a short, scrubbed summary from event types, page paths, timestamps, selected numeric properties, and truncated error messages. It never sends user IDs, IP addresses, chat messages, full properties, or client context. Error-cluster explanations may include up to five similarly scrubbed session summaries. The chosen third-party model provider (OpenRouter by default, through an OpenAI-compatible endpoint) receives this telemetry when you request an explanation; provider privacy, logging, and retention policies apply.
 
+## Weekly Founder Digest
+
+Opt in per ClickHouse-backed project; it is off by default. Each Monday from 09:00 UTC, LivePulse emails the verified account address saved when the owner opts in. The email summarizes the last 7 days of engagement, top pages, and up to 3 error clusters. If AI insights are enabled for that project, it can add a short "what to fix" paragraph grounded in those aggregates.
+
+- Run the separate worker with `npm run digest` or the `digest` Compose service. Configure `EMAIL_API_KEY`, `EMAIL_FROM`, `DIGEST_SECRET`, and `PUBLIC_BACKEND_URL`.
+- Redis coordinates weekly claims and retries failed sends up to 3 times. The stable provider idempotency key protects retries if a provider accepts a message but the worker loses the response.
+- Empty digests are skipped. AI text is optional and falls back to the deterministic digest if generation fails or output is not grounded.
+- Each email includes a signed unsubscribe link and one-click unsubscribe headers.
+- The LLM receives the same scrubbed aggregates used to build the email. AI calls count against the existing per-project daily budget.
+
 Configure `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, and `LLM_TIMEOUT_MS` in the backend environment. Leave the key/model unset to disable generation; the API continues to boot and returns a clear unavailable response. Per-user and per-project minute limits plus `AI_INSIGHT_DAILY_CALLS_PER_PROJECT` bound usage. Identical insights are cached for 10 minutes for live sessions and 7 days for ended sessions. Provider errors or malformed model output return a deterministic, telemetry-only summary. Turn the feature off at any time in project install settings; the project toggle defaults off.
 
 ## Known limitations

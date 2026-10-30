@@ -15,6 +15,7 @@ export type LPProject = {
   publicId?: string;
   badge?: BadgeSettings;
   aiInsights?: { enabled: boolean };
+  digest?: { enabled: boolean };
   referredBy?: string | null;
   createdAt?: string;
 };
@@ -129,6 +130,13 @@ export function updateBadge(projectId: string, patch: Partial<BadgeSettings>) {
 export function updateAiInsights(projectId: string, enabled: boolean) {
   return dashboardRequest<{ project: Pick<LPProject, "_id" | "aiInsights"> }>(
     `/api/projects/${projectId}/ai-insights`,
+    { method: "PATCH", body: JSON.stringify({ enabled }) },
+  ).then((response) => response.project);
+}
+
+export function updateDigest(projectId: string, enabled: boolean) {
+  return dashboardRequest<{ project: Pick<LPProject, "_id" | "digest"> }>(
+    `/api/projects/${projectId}/digest`,
     { method: "PATCH", body: JSON.stringify({ enabled }) },
   ).then((response) => response.project);
 }

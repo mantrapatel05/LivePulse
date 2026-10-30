@@ -44,7 +44,12 @@ const createProject = async (req, res) => {
     }
     return res.status(201).json({
       message: "Project created successfully",
-      project: { ...project.toObject(), aiInsights: { enabled: project.aiInsights?.enabled === true }, apiKey: plaintext },
+      project: {
+        ...project.toObject(),
+        aiInsights: { enabled: project.aiInsights?.enabled === true },
+        digest: { enabled: false },
+        apiKey: plaintext,
+      },
     });
   } catch (error) {
     return res.status(500).json({ message: "Failed to create project", error: error.message });
@@ -62,6 +67,7 @@ const listProjects = async (req, res) => {
     const withInsightSettings = projects.map((project) => ({
       ...project,
       aiInsights: { enabled: project.aiInsights?.enabled === true },
+      digest: { enabled: project.digest?.enabled === true },
     }));
 
     return res.status(200).json({

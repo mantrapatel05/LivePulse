@@ -9,6 +9,7 @@ const {
 } = require("../controllers/projectController");
 const { updateBadgeSettings, getBadgeStats } = require("../controllers/badgeController");
 const { updateAiInsightsSettings } = require("../controllers/insightController");
+const { updateDigestSettings } = require("../controllers/digestController");
 const { requireDashboardAuth } = require("../middleware/supabaseAuth");
 const { requireProjectOwnership } = require("../middleware/projectOwnership");
 const { dashboardRateLimit } = require("../middleware/dashboardRateLimit");
@@ -22,5 +23,6 @@ router.get("/:projectId/embed", requireProjectOwnership, getEmbedSnippet);
 router.patch("/:projectId/badge", requireProjectOwnership, updateBadgeSettings);
 router.get("/:projectId/badge", requireProjectOwnership, getBadgeStats);
 router.patch("/:projectId/ai-insights", requireProjectOwnership, updateAiInsightsSettings);
+router.patch("/:projectId/digest", requireProjectOwnership, updateDigestSettings);
 
 module.exports = router;

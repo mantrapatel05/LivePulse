@@ -132,6 +132,7 @@ function toUser(payload) {
     id: String(id),
     email: payload.email || null,
     role: payload.role || null,
+    emailVerified: Boolean(payload.email_confirmed_at || payload.user_metadata?.email_verified),
   };
 }
 

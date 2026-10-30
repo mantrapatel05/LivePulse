@@ -13,6 +13,7 @@ import { Bars, Empty, Panel, Spark, Stat } from "./Panel";
 import { ChatDock } from "./ChatDock";
 import { HypeBadgePreview } from "./HypeBadgePreview";
 import { AiInsightsSettings } from "./AiInsightsSettings";
+import { DigestSettings } from "./DigestSettings";
 
 type Row = Record<string, unknown>;
 type Session = {
@@ -370,6 +371,7 @@ export function InstallPanel({ project }: { project: LPProject }) {
       </Panel>
       <HypeBadgePreview project={project} />
       <AiInsightsSettings project={project} />
+      <DigestSettings project={project} />
     </>
   );
 }

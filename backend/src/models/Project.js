@@ -41,6 +41,11 @@ const ProjectSchema = new mongoose.Schema({
   aiInsights: {
     enabled: { type: Boolean, default: false },
   },
+  digest: {
+    enabled: { type: Boolean, default: false },
+    email: { type: String, default: null },
+    lastSentWeek: { type: String, default: null },
+  },
   createdAt: {
     type: Date,
     default: Date.now,

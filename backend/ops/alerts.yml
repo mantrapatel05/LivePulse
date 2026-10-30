@@ -110,3 +110,13 @@ groups:
         annotations:
           summary: "AI insight p95 latency exceeds 12 seconds"
           description: "AI insight provider latency p95 is above 12 seconds. Check provider health and model response times."
+
+      - alert: LivePulseDigestSendFailures
+        expr: increase(livepulse_digest_sends_total{result="failed"}[1h]) > 3
+        for: 0m
+        labels:
+          severity: warning
+          service: livepulse-digest
+        annotations:
+          summary: "Weekly digest sends are failing"
+          description: "More than 3 digest sends failed in the last hour. Check EMAIL_API_KEY, the sender domain and provider status."

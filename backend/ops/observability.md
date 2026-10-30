@@ -10,9 +10,13 @@ The API creates server spans and child ingestion/query spans. Trace context is c
 
 AI insight provider calls use `livepulse.llm.generate` spans without prompt or telemetry attributes. Logs record only model, token counts, latency, and outcome. Prometheus exports request outcomes by insight kind, provider latency in milliseconds, and token totals by direction. The dashboard includes insight request results and p95 latency; alerts cover sustained degradation/error rates above 25% and p95 latency above 12 seconds. Do not add prompt or event text to traces, logs, or metric labels.
 
+## Weekly digest worker
+
+`digestWorker.js` is a separate process. It ticks every 60 seconds and sends on Monday from 09:00 UTC, once per project per ISO week. It exposes `/metrics` on `DIGEST_METRICS_PORT` (default 9465), protected by the same `METRICS_TOKEN`. `livepulse_digest_sends_total{result=sent|skipped|failed|duplicate}` counts outcomes; `LivePulseDigestSendFailures` alerts on repeated failures. Logs contain project id, week, error name, and HTTP status only; provider response bodies and error messages are never logged.
+
 ## Metrics and Grafana
 
-Use `backend/ops/prometheus.yml` as the scrape configuration. Run Prometheus on a network that can resolve `api:5000` and `worker:9464`, or change those targets to the service addresses in your environment. The worker listener is internal to the service network and is not published as a host port by Compose.
+Use `backend/ops/prometheus.yml` as the scrape configuration. Run Prometheus on a network that can resolve `api:5000`, `worker:9464`, and `digest:9465`, or change those targets to the service addresses in your environment. Worker and digest listeners are internal to the service network and are not published as host ports by Compose.
 
 In production, uncomment the Bearer authorization blocks in the Prometheus configuration and mount the same `METRICS_TOKEN` value used by the API and worker at the configured credentials file path. Keep that token out of the repository.
 

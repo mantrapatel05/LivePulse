@@ -129,6 +129,13 @@ const engagementDriftRequests = new client.Counter({
   registers: [register],
 });
 
+const digestSends = new client.Counter({
+  name: "livepulse_digest_sends_total",
+  help: "Weekly founder digest outcomes",
+  labelNames: ["result"], // sent | skipped | failed | duplicate
+  registers: [register],
+});
+
 module.exports = {
   register,
   eventsAccepted,
@@ -149,4 +156,5 @@ module.exports = {
   aiInsightLatency,
   aiTokens,
   engagementDriftRequests,
+  digestSends,
 };

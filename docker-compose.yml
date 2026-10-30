@@ -49,6 +49,7 @@ services:
       CLICKHOUSE_DATABASE: default
       DASHBOARD_ORIGIN: http://localhost:5173
       PUBLIC_BACKEND_URL: http://localhost:5000
+      DIGEST_SECRET: ${DIGEST_SECRET:-}
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-local-dev-secret-change-me}
       NODE_ENV: development
       METRICS_TOKEN: ${METRICS_TOKEN:-}
@@ -72,6 +73,37 @@ services:
       OTEL_TRACES_SAMPLE_RATE: ${OTEL_TRACES_SAMPLE_RATE:-0.1}
       WORKER_METRICS_HOST: ${WORKER_METRICS_HOST:-0.0.0.0}
     depends_on:
+      redis: { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
+
+  digest:
+    build: ./backend
+    command: node digestWorker.js
+    environment:
+      MONGO_URI: mongodb://mongo:27017/livepulse
+      REDIS_URL: redis://redis:6379
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DATABASE: default
+      PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL:-http://localhost:5000}
+      DIGEST_SECRET: ${DIGEST_SECRET:-}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
+      EMAIL_API_KEY: ${EMAIL_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      DIGEST_CONCURRENCY: ${DIGEST_CONCURRENCY:-3}
+      DIGEST_CATCHUP_DAYS: ${DIGEST_CATCHUP_DAYS:-0}
+      DIGEST_METRICS_PORT: 9465
+      DIGEST_METRICS_HOST: 0.0.0.0
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://openrouter.ai/api/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-15000}
+      AI_INSIGHT_DAILY_CALLS_PER_PROJECT: ${AI_INSIGHT_DAILY_CALLS_PER_PROJECT:-100}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_TRACES_SAMPLE_RATE: ${OTEL_TRACES_SAMPLE_RATE:-0.1}
+      NODE_ENV: development
+    depends_on:
+      mongo: { condition: service_healthy }
       redis: { condition: service_healthy }
       clickhouse: { condition: service_healthy }
 
