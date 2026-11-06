@@ -24,3 +24,7 @@ desktop.ini
 
 # Local deployment tooling
 .wrangler/
+.vercel/
+.env
+.env.*
+!.env.example
